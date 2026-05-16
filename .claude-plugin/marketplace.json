@@ -1,0 +1,32 @@
+{
+  "name": "shipgate",
+  "owner": {
+    "name": "OneStudio",
+    "url": "https://github.com/onestudio-co"
+  },
+  "metadata": {
+    "description": "Studio Shipgate — turn end-of-cycle agent changes into a plain-language, step-by-step review a non-technical decision-maker can actually approve. Bundles /turbo.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "shipgate",
+      "source": "./",
+      "description": "Purpose-built stepwise change-review surface for founders/PMs/designers: one decision-framed Change Card per screen (plain terms, why, impact, before/after, optional technical drawer), round-tripped back to Claude. Includes the /turbo autonomous-cycle skill (shipgate is turbo's end-of-run human gate).",
+      "author": {
+        "name": "OneStudio",
+        "url": "https://github.com/onestudio-co"
+      },
+      "license": "MIT",
+      "keywords": [
+        "change-review",
+        "non-technical",
+        "approval-gate",
+        "stepwise",
+        "turbo",
+        "human-in-the-loop",
+        "claude-code"
+      ]
+    }
+  ]
+}
