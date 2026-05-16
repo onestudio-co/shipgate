@@ -99,6 +99,31 @@ function serveFile(res, filePath) {
   send(res, 200, ct, data);
 }
 
+// ── compile and write final record ────────────────────────────────────────────
+
+function writeDecision(stateDir, cardsJson) {
+  let eventLines = [];
+  try {
+    const raw = fs.readFileSync(path.join(stateDir, 'events'), 'utf8');
+    eventLines = raw.split('\n').filter(l => l.trim());
+  } catch { /* no events file yet → empty */ }
+
+  const { compile } = require('./decision.cjs');
+  const shimmedCards = {
+    ...cardsJson,
+    cards: cardsJson.cards.map(c => ({ ...c, title: c.headline }))
+  };
+  const result = compile(shimmedCards, eventLines);
+  fs.writeFileSync(
+    path.join(stateDir, 'decision.json'),
+    JSON.stringify(result.decision, null, 2)
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'prepared-message.txt'),
+    result.message
+  );
+}
+
 // ── server factory ────────────────────────────────────────────────────────────
 
 function startServer({ contentDir, stateDir, host = '127.0.0.1', port = 0 }) {
@@ -142,11 +167,27 @@ function startServer({ contentDir, stateDir, host = '127.0.0.1', port = 0 }) {
         sendJSON(res, 503, { ok: false, error: err });
         return;
       }
-      // Sort cards by risk order
-      const sorted = [...cardsJson.cards].sort(
-        (a, b) => RISK_ORDER.indexOf(a.risk) - RISK_ORDER.indexOf(b.risk)
-      );
-      sendJSON(res, 200, { ...cardsJson, cards: sorted });
+      // Sort cards by risk order; ensure every card has a status (default: 'pending')
+      const sorted = [...cardsJson.cards]
+        .sort((a, b) => RISK_ORDER.indexOf(a.risk) - RISK_ORDER.indexOf(b.risk))
+        .map(c => ({ ...c, status: c.status || 'pending' }));
+
+      // Compute complete: all cards approved or resolved
+      const complete = sorted.every(c => c.status === 'approved' || c.status === 'resolved');
+
+      // Auto-write final record if complete and not already written (idempotent)
+      if (complete) {
+        const decisionPath = path.join(stateDir, 'decision.json');
+        if (!fs.existsSync(decisionPath)) {
+          try {
+            writeDecision(stateDir, cardsJson);
+          } catch (e) {
+            // Non-fatal: respond with complete:true anyway so the UI shows the final screen
+          }
+        }
+      }
+
+      sendJSON(res, 200, { ...cardsJson, cards: sorted, complete });
       return;
     }
 
@@ -168,8 +209,26 @@ function startServer({ contentDir, stateDir, host = '127.0.0.1', port = 0 }) {
           sendJSON(res, 400, { ok: false, error: 'invalid JSON' });
           return;
         }
+        // Always append to events file first (source of truth for decision.cjs)
         const line = JSON.stringify(parsed) + '\n';
         fs.appendFileSync(path.join(stateDir, 'events'), line);
+
+        // Update card status in cards.json (tolerant — don't fail if cards.json unreadable)
+        try {
+          const cardsPath = path.join(stateDir, 'cards.json');
+          const cardsJson = JSON.parse(fs.readFileSync(cardsPath, 'utf8'));
+          const card = cardsJson.cards.find(c => c.id === parsed.cardId);
+          if (card) {
+            if (parsed.verdict === 'approve') {
+              card.status = 'approved';
+            } else if (parsed.verdict === 'change' || parsed.verdict === 'question') {
+              card.status = 'blocked';
+              card.blockNote = parsed.note || '';
+            }
+            fs.writeFileSync(cardsPath, JSON.stringify(cardsJson));
+          }
+        } catch { /* tolerate missing/malformed cards.json — events file is authoritative */ }
+
         sendJSON(res, 200, { ok: true });
       }).catch(err => {
         if (err.code === 'TOO_LARGE') {

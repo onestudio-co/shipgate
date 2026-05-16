@@ -62,11 +62,13 @@ When `hasDiff` is `true`, write the real raw `git diff` output for that group to
 
 ### 4. Write `state/cards.json`
 
+Each card must include `"status": "pending"` when first written.
+
 ```json
 {
   "baseline": "<SHA or ref>",
   "title": "<human cycle title, e.g. 'Sprint 12 — ICP Targeting'>",
-  "cards": [ /* all Change Card objects */ ]
+  "cards": [ /* all Change Card objects, each with "status": "pending" */ ]
 }
 ```
 
@@ -82,17 +84,33 @@ Use `run_in_background` on platforms that reap child processes. Then read `<repo
 
 Tell the user:
 - The URL (e.g. `http://localhost:51234`)
-- That nothing is live until they submit in the browser.
+- That the review is interactive: they approve cards one by one, and if they request a change or ask a question, the review pauses and waits for Claude to resolve it.
 - End the turn.
 
 ---
 
-### 6. Next turn — read the decision
+### 6. Active review — handling a block
 
-Read `state/decision.json`. If absent, the review is incomplete — re-share the URL. If present, act on each verdict:
-- `approve` → proceed.
-- `change` → apply the note.
-- `question` → answer the note.
+While a shipgate review is running, when the user returns to the terminal, Claude MUST check the live review state:
+
+1. Read `state/cards.json`.
+2. If any card has `"status": "blocked"`, that is a pending item to handle **now** — before doing anything else.
+
+**For a question:** write Claude's answer onto that card (add an `answer` field and/or fold the answer into `plain`), set its `status` to `"resolved"`. Rewrite `state/cards.json`.
+
+**For a change:** actually make the requested edit to the real code or docs, THEN re-narrate every still-`pending` card to reflect the new reality (you may add, remove, or reword cards — keep `approved`/`resolved` cards untouched), set the resolved card's `status` to `"resolved"` with a short `resolution` note of what was done. Rewrite `state/cards.json` with all updates.
+
+After resolving, tell the user: **"Done — click Continue in the review."**
+
+Never advance the review yourself; the user clicks Continue.
+
+---
+
+### 7. Next turn — read the decision
+
+The review self-completes when all cards reach `approved` or `resolved` status — the server writes `state/decision.json` and `state/prepared-message.txt` automatically. There is no Submit button.
+
+Read `state/decision.json` as the final record. If absent, the review is not yet complete — re-share the URL and wait.
 
 Under `/turbo` + `/loop` this auto-resumes. Otherwise the user pastes `state/prepared-message.txt` back into the conversation.
 
