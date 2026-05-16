@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Studio Shipgate — turn end-of-cycle agent changes into a plain-language, step-by-step review a non-technical decision-maker can actually approve. Bundles /turbo.",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {

@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
-# start.sh — launch Studio Shipgate server for the current project
+# start.sh — launch Studio Shipgate server for a project
+# Usage: start.sh [--project-dir <path>]
+#   --project-dir <path>  Root under which .shipgate/<session>/ is created.
+#                         Default: the current working directory ($PWD),
+#                         i.e. the project Claude is running in.
+# (Bug fix: previously this script rooted .shipgate next to itself, ignoring
+#  --project-dir, so sessions landed inside the installed plugin cache.)
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$PWD"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project-dir)
+      [ $# -ge 2 ] || { echo '{"ok":false,"error":"--project-dir requires a path"}' >&2; exit 2; }
+      PROJECT_ROOT="$2"; shift 2 ;;
+    --project-dir=*)
+      PROJECT_ROOT="${1#*=}"; shift ;;
+    *) shift ;;  # tolerate/ignore unknown args
+  esac
+done
+
+# Validate + normalize to an absolute path
+PROJECT_ROOT="$(cd "$PROJECT_ROOT" 2>/dev/null && pwd)" || {
+  echo '{"ok":false,"error":"--project-dir path does not exist"}' >&2; exit 2; }
+
 SHIPGATE_DIR="$PROJECT_ROOT/.shipgate"
 PID_TS="$(date +%Y%m%d-%H%M%S)-$$"
 SESSION_DIR="$SHIPGATE_DIR/$PID_TS"
