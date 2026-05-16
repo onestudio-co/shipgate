@@ -1,3 +1,4 @@
+'use strict';
 const crypto = require('crypto');
 const http = require('http');
 const fs = require('fs');
@@ -71,14 +72,12 @@ function decodeFrame(buffer) {
   return { opcode, payload: data, bytesConsumed: totalLen };
 }
 
-// ========== Configuration ==========
+// ========== Configuration (CLI mode defaults) ==========
 
-const PORT = process.env.BRAINSTORM_PORT || (49152 + Math.floor(Math.random() * 16383));
-const HOST = process.env.BRAINSTORM_HOST || '127.0.0.1';
-const URL_HOST = process.env.BRAINSTORM_URL_HOST || (HOST === '127.0.0.1' ? 'localhost' : HOST);
-const SESSION_DIR = process.env.BRAINSTORM_DIR || '/tmp/brainstorm';
-const CONTENT_DIR = path.join(SESSION_DIR, 'content');
-const STATE_DIR = path.join(SESSION_DIR, 'state');
+const DEFAULT_PORT = process.env.BRAINSTORM_PORT || (49152 + Math.floor(Math.random() * 16383));
+const DEFAULT_HOST = process.env.BRAINSTORM_HOST || '127.0.0.1';
+const DEFAULT_URL_HOST = process.env.BRAINSTORM_URL_HOST || (DEFAULT_HOST === '127.0.0.1' ? 'localhost' : DEFAULT_HOST);
+const DEFAULT_SESSION_DIR = process.env.BRAINSTORM_DIR || '/tmp/brainstorm';
 let ownerPid = process.env.BRAINSTORM_OWNER_PID ? Number(process.env.BRAINSTORM_OWNER_PID) : null;
 
 const MIME_TYPES = {
@@ -91,16 +90,12 @@ const MIME_TYPES = {
 
 const WAITING_PAGE = `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>Brainstorm Companion</title>
+<head><meta charset="utf-8"><title>Shipgate Review</title>
 <style>body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
 h1 { color: #333; } p { color: #666; }</style>
 </head>
-<body><h1>Brainstorm Companion</h1>
+<body><h1>Shipgate review</h1>
 <p>Waiting for the agent to push a screen...</p></body></html>`;
-
-const frameTemplate = fs.readFileSync(path.join(__dirname, 'frame-template.html'), 'utf-8');
-const helperScript = fs.readFileSync(path.join(__dirname, 'helper.js'), 'utf-8');
-const helperInjection = '<script>\n' + helperScript + '\n</script>';
 
 // ========== Helper Functions ==========
 
@@ -109,223 +104,306 @@ function isFullDocument(html) {
   return trimmed.startsWith('<!doctype') || trimmed.startsWith('<html');
 }
 
-function wrapInFrame(content) {
-  return frameTemplate.replace('<!-- CONTENT -->', content);
-}
-
-function getNewestScreen() {
-  const files = fs.readdirSync(CONTENT_DIR)
+function getNewestScreen(contentDir) {
+  const files = fs.readdirSync(contentDir)
     .filter(f => f.endsWith('.html'))
     .map(f => {
-      const fp = path.join(CONTENT_DIR, f);
+      const fp = path.join(contentDir, f);
       return { path: fp, mtime: fs.statSync(fp).mtime.getTime() };
     })
     .sort((a, b) => b.mtime - a.mtime);
   return files.length > 0 ? files[0].path : null;
 }
 
-// ========== HTTP Request Handler ==========
+// ========== Core server factory ==========
 
-function handleRequest(req, res) {
-  touchActivity();
-  if (req.method === 'GET' && req.url === '/') {
-    const screenFile = getNewestScreen();
-    let html = screenFile
-      ? (raw => isFullDocument(raw) ? raw : wrapInFrame(raw))(fs.readFileSync(screenFile, 'utf-8'))
-      : WAITING_PAGE;
+function startServer({ contentDir, stateDir, host, port: bindPort }) {
+  return new Promise((resolve, reject) => {
+    const frameHtmlPath = path.join(__dirname, 'frame.html');
+    const frameTemplatePath = path.join(__dirname, 'frame-template.html');
+    const framePath = fs.existsSync(frameHtmlPath) ? frameHtmlPath : frameTemplatePath;
+    const frameTemplate = fs.readFileSync(framePath, 'utf-8');
+    const helperScript = fs.readFileSync(path.join(__dirname, 'helper.js'), 'utf-8');
+    const helperInjection = '<script>\n' + helperScript + '\n</script>';
 
-    if (html.includes('</body>')) {
-      html = html.replace('</body>', helperInjection + '\n</body>');
-    } else {
-      html += helperInjection;
+    const decisionCompiler = require('./decision.cjs');
+
+    const RISK_ORDER = ['NEEDS-YOU', 'DELETION', 'BEHAVIOR', 'SAFE'];
+
+    function wrapInFrame(content) {
+      return frameTemplate.replace('<!-- CONTENT -->', content);
     }
 
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
-  } else if (req.method === 'GET' && req.url.startsWith('/files/')) {
-    const fileName = req.url.slice(7);
-    const filePath = path.join(CONTENT_DIR, path.basename(fileName));
-    if (!fs.existsSync(filePath)) {
-      res.writeHead(404);
-      res.end('Not found');
-      return;
-    }
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(fs.readFileSync(filePath));
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
-  }
-}
+    const clients = new Set();
 
-// ========== WebSocket Connection Handling ==========
+    // ========== Activity Tracking ==========
+    const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+    let lastActivity = Date.now();
+    function touchActivity() { lastActivity = Date.now(); }
 
-const clients = new Set();
+    // ========== HTTP Request Handler ==========
 
-function handleUpgrade(req, socket) {
-  const key = req.headers['sec-websocket-key'];
-  if (!key) { socket.destroy(); return; }
-
-  const accept = computeAcceptKey(key);
-  socket.write(
-    'HTTP/1.1 101 Switching Protocols\r\n' +
-    'Upgrade: websocket\r\n' +
-    'Connection: Upgrade\r\n' +
-    'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
-  );
-
-  let buffer = Buffer.alloc(0);
-  clients.add(socket);
-
-  socket.on('data', (chunk) => {
-    buffer = Buffer.concat([buffer, chunk]);
-    while (buffer.length > 0) {
-      let result;
-      try {
-        result = decodeFrame(buffer);
-      } catch (e) {
-        socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
-        clients.delete(socket);
-        return;
-      }
-      if (!result) break;
-      buffer = buffer.slice(result.bytesConsumed);
-
-      switch (result.opcode) {
-        case OPCODES.TEXT:
-          handleMessage(result.payload.toString());
-          break;
-        case OPCODES.CLOSE:
-          socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
-          clients.delete(socket);
-          return;
-        case OPCODES.PING:
-          socket.write(encodeFrame(OPCODES.PONG, result.payload));
-          break;
-        case OPCODES.PONG:
-          break;
-        default: {
-          const closeBuf = Buffer.alloc(2);
-          closeBuf.writeUInt16BE(1003);
-          socket.end(encodeFrame(OPCODES.CLOSE, closeBuf));
-          clients.delete(socket);
-          return;
-        }
-      }
-    }
-  });
-
-  socket.on('close', () => clients.delete(socket));
-  socket.on('error', () => clients.delete(socket));
-}
-
-function handleMessage(text) {
-  let event;
-  try {
-    event = JSON.parse(text);
-  } catch (e) {
-    console.error('Failed to parse WebSocket message:', e.message);
-    return;
-  }
-  touchActivity();
-  console.log(JSON.stringify({ source: 'user-event', ...event }));
-  if (event.choice) {
-    const eventsFile = path.join(STATE_DIR, 'events');
-    fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n');
-  }
-}
-
-function broadcast(msg) {
-  const frame = encodeFrame(OPCODES.TEXT, Buffer.from(JSON.stringify(msg)));
-  for (const socket of clients) {
-    try { socket.write(frame); } catch (e) { clients.delete(socket); }
-  }
-}
-
-// ========== Activity Tracking ==========
-
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-let lastActivity = Date.now();
-
-function touchActivity() {
-  lastActivity = Date.now();
-}
-
-// ========== File Watching ==========
-
-const debounceTimers = new Map();
-
-// ========== Server Startup ==========
-
-function startServer() {
-  if (!fs.existsSync(CONTENT_DIR)) fs.mkdirSync(CONTENT_DIR, { recursive: true });
-  if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
-
-  // Track known files to distinguish new screens from updates.
-  // macOS fs.watch reports 'rename' for both new files and overwrites,
-  // so we can't rely on eventType alone.
-  const knownFiles = new Set(
-    fs.readdirSync(CONTENT_DIR).filter(f => f.endsWith('.html'))
-  );
-
-  const server = http.createServer(handleRequest);
-  server.on('upgrade', handleUpgrade);
-
-  const watcher = fs.watch(CONTENT_DIR, (eventType, filename) => {
-    if (!filename || !filename.endsWith('.html')) return;
-
-    if (debounceTimers.has(filename)) clearTimeout(debounceTimers.get(filename));
-    debounceTimers.set(filename, setTimeout(() => {
-      debounceTimers.delete(filename);
-      const filePath = path.join(CONTENT_DIR, filename);
-
-      if (!fs.existsSync(filePath)) return; // file was deleted
+    function handleRequest(req, res) {
       touchActivity();
 
-      if (!knownFiles.has(filename)) {
-        knownFiles.add(filename);
-        const eventsFile = path.join(STATE_DIR, 'events');
-        if (fs.existsSync(eventsFile)) fs.unlinkSync(eventsFile);
-        console.log(JSON.stringify({ type: 'screen-added', file: filePath }));
-      } else {
-        console.log(JSON.stringify({ type: 'screen-updated', file: filePath }));
+      // GET /diff/:id  → raw diff payload (lazy)
+      if (req.method === 'GET' && req.url.startsWith('/diff/')) {
+        const id = req.url.slice('/diff/'.length).replace(/[^a-zA-Z0-9_-]/g, '');
+        const f = path.join(stateDir, 'diffs', id + '.txt');
+        if (fs.existsSync(f)) { res.writeHead(200, {'Content-Type':'text/plain'}); return res.end(fs.readFileSync(f)); }
+        res.writeHead(404); return res.end('no diff');
       }
 
-      broadcast({ type: 'reload' });
-    }, 100));
-  });
-  watcher.on('error', (err) => console.error('fs.watch error:', err.message));
+      // POST /event  → append verdict to state/events (proven bus)
+      if (req.method === 'POST' && req.url === '/event') {
+        let b = ''; req.on('data', c => b += c); req.on('end', () => {
+          try { JSON.parse(b); fs.appendFileSync(path.join(stateDir,'events'), b.trim()+'\n'); } catch {}
+          res.writeHead(200); res.end('ok');
+        }); return;
+      }
 
-  function shutdown(reason) {
-    console.log(JSON.stringify({ type: 'server-stopped', reason }));
-    const infoFile = path.join(STATE_DIR, 'server-info');
-    if (fs.existsSync(infoFile)) fs.unlinkSync(infoFile);
-    fs.writeFileSync(
-      path.join(STATE_DIR, 'server-stopped'),
-      JSON.stringify({ reason, timestamp: Date.now() }) + '\n'
+      // POST /submit → compile decision.json + prepared-message.txt
+      if (req.method === 'POST' && req.url === '/submit') {
+        req.on('data', () => {}); req.on('end', () => {
+          try {
+            const cards = JSON.parse(fs.readFileSync(path.join(stateDir,'cards.json'),'utf8'));
+            const ev = fs.existsSync(path.join(stateDir,'events'))
+              ? fs.readFileSync(path.join(stateDir,'events'),'utf8').split('\n').filter(Boolean) : [];
+            const { decision: dj, message } = decisionCompiler.compile(cards, ev);
+            fs.writeFileSync(path.join(stateDir,'decision.json'), JSON.stringify(dj,null,2));
+            fs.writeFileSync(path.join(stateDir,'prepared-message.txt'), message+'\n');
+            res.writeHead(200,{'Content-Type':'application/json'}); res.end('{"ok":true}');
+          } catch (e) { res.writeHead(409,{'Content-Type':'application/json'});
+            res.end(JSON.stringify({ok:false,error:String(e.message||e)})); }
+        }); return;
+      }
+
+      if (req.method === 'GET' && req.url === '/') {
+        // Render deck if cards.json present; fall back to newest screen
+        const cardsPath = path.join(stateDir, 'cards.json');
+        if (fs.existsSync(cardsPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(cardsPath, 'utf8'));
+            // Sort cards by risk order
+            const sorted = [...manifest.cards].sort((a, b) => {
+              const ai = RISK_ORDER.indexOf(a.risk); const bi = RISK_ORDER.indexOf(b.risk);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+            const deckData = { ...manifest, cards: sorted };
+            let html = frameTemplate;
+            // Inject __SHIPGATE_CARDS__ before </body>
+            const injection = '<script>window.__SHIPGATE_CARDS__ = ' + JSON.stringify(deckData) + ';</script>\n' + helperInjection;
+            if (html.includes('</body>')) {
+              html = html.replace('</body>', injection + '\n</body>');
+            } else {
+              html += injection;
+            }
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            return res.end(html);
+          } catch (e) {
+            // fall through to legacy behavior
+          }
+        }
+
+        // Legacy: serve newest screen
+        const screenFile = getNewestScreen(contentDir);
+        let html = screenFile
+          ? (raw => isFullDocument(raw) ? raw : wrapInFrame(raw))(fs.readFileSync(screenFile, 'utf-8'))
+          : WAITING_PAGE;
+
+        if (html.includes('</body>')) {
+          html = html.replace('</body>', helperInjection + '\n</body>');
+        } else {
+          html += helperInjection;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
+      if (req.method === 'GET' && req.url.startsWith('/files/')) {
+        const fileName = req.url.slice(7);
+        const filePath = path.join(contentDir, path.basename(fileName));
+        if (!fs.existsSync(filePath)) {
+          res.writeHead(404);
+          res.end('Not found');
+          return;
+        }
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(fs.readFileSync(filePath));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end('Not found');
+    }
+
+    // ========== WebSocket Connection Handling ==========
+
+    function handleUpgrade(req, socket) {
+      const key = req.headers['sec-websocket-key'];
+      if (!key) { socket.destroy(); return; }
+
+      const accept = computeAcceptKey(key);
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\r\n' +
+        'Upgrade: websocket\r\n' +
+        'Connection: Upgrade\r\n' +
+        'Sec-WebSocket-Accept: ' + accept + '\r\n\r\n'
+      );
+
+      let buffer = Buffer.alloc(0);
+      clients.add(socket);
+
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (buffer.length > 0) {
+          let result;
+          try {
+            result = decodeFrame(buffer);
+          } catch (e) {
+            socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
+            clients.delete(socket);
+            return;
+          }
+          if (!result) break;
+          buffer = buffer.slice(result.bytesConsumed);
+
+          switch (result.opcode) {
+            case OPCODES.TEXT:
+              handleMessage(result.payload.toString());
+              break;
+            case OPCODES.CLOSE:
+              socket.end(encodeFrame(OPCODES.CLOSE, Buffer.alloc(0)));
+              clients.delete(socket);
+              return;
+            case OPCODES.PING:
+              socket.write(encodeFrame(OPCODES.PONG, result.payload));
+              break;
+            case OPCODES.PONG:
+              break;
+            default: {
+              const closeBuf = Buffer.alloc(2);
+              closeBuf.writeUInt16BE(1003);
+              socket.end(encodeFrame(OPCODES.CLOSE, closeBuf));
+              clients.delete(socket);
+              return;
+            }
+          }
+        }
+      });
+
+      socket.on('close', () => clients.delete(socket));
+      socket.on('error', () => clients.delete(socket));
+    }
+
+    function handleMessage(text) {
+      let event;
+      try {
+        event = JSON.parse(text);
+      } catch (e) {
+        console.error('Failed to parse WebSocket message:', e.message);
+        return;
+      }
+      touchActivity();
+      console.log(JSON.stringify({ source: 'user-event', ...event }));
+      if (event.choice) {
+        const eventsFile = path.join(stateDir, 'events');
+        fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n');
+      }
+    }
+
+    // ========== File Watching ==========
+    const debounceTimers = new Map();
+
+    if (!fs.existsSync(contentDir)) fs.mkdirSync(contentDir, { recursive: true });
+    if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
+
+    const knownFiles = new Set(
+      fs.readdirSync(contentDir).filter(f => f.endsWith('.html'))
     );
-    watcher.close();
-    clearInterval(lifecycleCheck);
-    server.close(() => process.exit(0));
-  }
 
-  function ownerAlive() {
-    if (!ownerPid) return true;
-    try { process.kill(ownerPid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
-  }
+    const server = http.createServer(handleRequest);
+    server.on('upgrade', handleUpgrade);
 
-  // Check every 60s: exit if owner process died or idle for 30 minutes
-  const lifecycleCheck = setInterval(() => {
-    if (!ownerAlive()) shutdown('owner process exited');
-    else if (Date.now() - lastActivity > IDLE_TIMEOUT_MS) shutdown('idle timeout');
-  }, 60 * 1000);
-  lifecycleCheck.unref();
+    const watcher = fs.watch(contentDir, (eventType, filename) => {
+      if (!filename || !filename.endsWith('.html')) return;
 
-  // Validate owner PID at startup. If it's already dead, the PID resolution
-  // was wrong (common on WSL, Tailscale SSH, and cross-user scenarios).
-  // Disable monitoring and rely on the idle timeout instead.
+      if (debounceTimers.has(filename)) clearTimeout(debounceTimers.get(filename));
+      debounceTimers.set(filename, setTimeout(() => {
+        debounceTimers.delete(filename);
+        const filePath = path.join(contentDir, filename);
+
+        if (!fs.existsSync(filePath)) return;
+        touchActivity();
+
+        if (!knownFiles.has(filename)) {
+          knownFiles.add(filename);
+          const eventsFile = path.join(stateDir, 'events');
+          if (fs.existsSync(eventsFile)) fs.unlinkSync(eventsFile);
+          console.log(JSON.stringify({ type: 'screen-added', file: filePath }));
+        } else {
+          console.log(JSON.stringify({ type: 'screen-updated', file: filePath }));
+        }
+
+        const frame = encodeFrame(OPCODES.TEXT, Buffer.from(JSON.stringify({ type: 'reload' })));
+        for (const socket of clients) {
+          try { socket.write(frame); } catch (e) { clients.delete(socket); }
+        }
+      }, 100));
+    });
+    watcher.on('error', (err) => console.error('fs.watch error:', err.message));
+
+    // Lifecycle check (only for CLI mode — tests use close() directly)
+    const lifecycleCheck = setInterval(() => {
+      if (Date.now() - lastActivity > IDLE_TIMEOUT_MS) {
+        console.log(JSON.stringify({ type: 'server-stopped', reason: 'idle timeout' }));
+        server.close();
+      }
+    }, 60 * 1000);
+    lifecycleCheck.unref();
+
+    server.listen(bindPort || 0, host || '127.0.0.1', () => {
+      const addr = server.address();
+      const actualPort = addr.port;
+      const info = JSON.stringify({
+        type: 'server-started', port: actualPort, host: host || '127.0.0.1',
+        url: 'http://' + (host || '127.0.0.1') + ':' + actualPort,
+        screen_dir: contentDir, state_dir: stateDir
+      });
+      console.log(info);
+      try { fs.writeFileSync(path.join(stateDir, 'server-info'), info + '\n'); } catch {}
+
+      resolve({
+        port: actualPort,
+        close: () => new Promise(res2 => {
+          watcher.close();
+          clearInterval(lifecycleCheck);
+          server.close(() => res2());
+          // Destroy all WebSocket clients
+          for (const socket of clients) { try { socket.destroy(); } catch {} }
+        })
+      });
+    });
+
+    server.on('error', reject);
+  });
+}
+
+// ========== CLI entry point ==========
+
+if (require.main === module) {
+  const PORT = process.env.BRAINSTORM_PORT || (49152 + Math.floor(Math.random() * 16383));
+  const HOST = process.env.BRAINSTORM_HOST || '127.0.0.1';
+  const URL_HOST = process.env.BRAINSTORM_URL_HOST || (HOST === '127.0.0.1' ? 'localhost' : HOST);
+  const SESSION_DIR = process.env.BRAINSTORM_DIR || '/tmp/brainstorm';
+  const CONTENT_DIR = path.join(SESSION_DIR, 'content');
+  const STATE_DIR = path.join(SESSION_DIR, 'state');
+  ownerPid = process.env.BRAINSTORM_OWNER_PID ? Number(process.env.BRAINSTORM_OWNER_PID) : null;
+
   if (ownerPid) {
     try { process.kill(ownerPid, 0); }
     catch (e) {
@@ -336,19 +414,12 @@ function startServer() {
     }
   }
 
-  server.listen(PORT, HOST, () => {
-    const info = JSON.stringify({
-      type: 'server-started', port: Number(PORT), host: HOST,
-      url_host: URL_HOST, url: 'http://' + URL_HOST + ':' + PORT,
-      screen_dir: CONTENT_DIR, state_dir: STATE_DIR
-    });
-    console.log(info);
-    fs.writeFileSync(path.join(STATE_DIR, 'server-info'), info + '\n');
-  });
+  startServer({ contentDir: CONTENT_DIR, stateDir: STATE_DIR, host: HOST, port: Number(PORT) })
+    .then(({ port, close }) => {
+      process.on('SIGTERM', () => close().then(() => process.exit(0)));
+      process.on('SIGINT', () => close().then(() => process.exit(0)));
+    })
+    .catch(e => { console.error(e); process.exit(1); });
 }
 
-if (require.main === module) {
-  startServer();
-}
-
-module.exports = { computeAcceptKey, encodeFrame, decodeFrame, OPCODES };
+module.exports = { startServer, computeAcceptKey, encodeFrame, decodeFrame, OPCODES };
