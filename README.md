@@ -1,87 +1,156 @@
-# Studio Shipgate — v0.2
+# Studio Shipgate
 
-Purpose-built stepwise change reviewer for non-technical decision-makers (founders, PMs, designers). At the end of a Claude work cycle it turns "what changed" into rich, plain-language **Change Cards** — one per screen, decision-framed, with a human-terms before/after — reviewed in a browser, no diffs required.
+**Plain-language change review for the people who decide — founders, PMs, designers — not engineers.**
 
-Bundles `/turbo`: Shipgate is turbo's end-of-run human gate.
+When Claude finishes a cycle of work, Shipgate turns *"what changed"* into a
+guided, one-thing-at-a-time review in the browser. Each change is a
+**Change Card**: what changed, why, what it means for the product or business,
+the exact decision being put to you, and a plain-English before/after — **no
+diffs, no PRs, no red and green lines**. The technical detail is one optional
+click away for anyone who wants it.
 
-## What makes v0.2 different
+Shipgate also bundles **`/turbo`** — it is turbo's end-of-run human gate, so an
+autonomous run still lands in front of a person who can actually approve it.
 
-- **Stepwise, one card at a time.** Each Change Card fills the screen. You action it (approve / request change / ask a question) and the next card appears automatically. No overwhelming list of everything at once.
-- **Decision-framed cards.** Every card answers the questions a real decision-maker needs: what changed, why, what it means for the product or business, and the exact question being put to you. Cards include a before/after preview in plain English — what a person experiences, not a code diff.
-- **Optional technical drawer.** "View technical detail" opens a slide-over with the raw diff for the technically curious. Everything in the card itself is jargon-free.
-- **Editable summary before final submit.** After all cards are reviewed, a summary screen shows every verdict with its note, each editable in place. One "Submit review" button finalises.
-- **Studio Shipgate brand.** Purpose-built UI — no shared chrome from other tools.
+---
+
+## The review is a conversation, not a form (v0.3)
+
+Earlier versions showed every change and asked you to submit them all at the
+end. v0.3 makes it **interactive and blocking**:
+
+- **Approve → it flows.** Approving a card immediately moves to the next one.
+  No round-trip, no waiting. Approvals never interrupt you.
+- **Request a change / Ask a question → it blocks.** The review **pauses** on
+  that card and tells you to go back to Claude. You don't review anything
+  further past an unresolved item — no reviewing fiction.
+- **Claude does the work, then you Continue.** Back in your terminal, Claude
+  resolves it: a *question* gets answered; a *change* gets actually made —
+  and Claude **re-narrates the remaining cards** so the rest of the review
+  reflects reality, not the pre-edit state. It tells you when it's done; you
+  click **Continue** and the next item unlocks.
+- **It ends itself.** When nothing is left pending or blocked, you see
+  **"✅ All reviewed — nothing left for Claude."** The decision record is
+  written automatically. There is no batch "submit", and no going back —
+  approved is approved, blocked waits on Claude.
+
+Cards are shown **risk-first** (NEEDS-YOU → DELETION → BEHAVIOR → SAFE) so the
+things that need your judgement come first. The UI is purpose-built and
+branded — no borrowed chrome from other tools.
+
+---
 
 ## How it works
 
 ### Operator (Claude — the narrator)
 
-At the end of a work cycle the `shipgate` skill:
+The `shipgate` skill runs at the end of a work cycle (or on demand via
+`/shipgate`):
 
-1. Determines the baseline (kickoff SHA → merge-base → last tag) and states the assumption.
-2. Collects the full change-set (`git diff baseline..HEAD` + uncommitted) and groups hunks by **intent** (a feature, decision, or deletion) — not by file.
-3. Writes a v2 **Change Card** for each group: headline, plain explanation (2–4 sentences), why, concrete impact, the explicit decision question, what happens on approve/push-back, and a human-terms before/after example. Risk-ordered: NEEDS-YOU → DELETION → BEHAVIOR → SAFE.
-4. Writes `state/cards.json` and, for cards with `hasDiff: true`, the raw diff to `state/diffs/<id>.txt`.
-5. Starts the server (`bash <plugin>/server/start.sh --project-dir <repo>`), reads `state/server-info` for the URL, and hands off to the reviewer. Nothing is live until the reviewer submits.
-6. Next turn: reads `state/decision.json` and acts on each verdict — applies change notes, answers questions, proceeds on approvals.
+1. Determines the baseline (kickoff SHA → `merge-base` → last tag) and states
+   the assumption.
+2. Collects the change-set (`git diff baseline..HEAD` + uncommitted) and
+   groups it by **intent** — a feature, a decision, a deletion — not by file.
+3. Writes one v2 **Change Card** per group with every required field filled:
+   headline, plain explanation, why, concrete impact, the explicit decision,
+   what approve vs. push-back each lead to, and a human-terms before/after.
+   Each card starts at `status: "pending"`.
+4. Writes `state/cards.json` (+ `state/diffs/<id>.txt` for cards with
+   `hasDiff`), starts the server with
+   `bash <plugin>/server/start.sh --project-dir <repo>`, reads
+   `state/server-info` for the URL, and hands the URL to the reviewer.
+5. **While the review is live:** whenever the reviewer returns, Claude checks
+   `state/cards.json` for a `blocked` card. A *question* → Claude writes the
+   answer and marks it `resolved`. A *change* → Claude makes the edit,
+   **re-narrates the still-pending cards**, marks the card `resolved`, and
+   rewrites `cards.json`. Claude never advances the review itself — it tells
+   the reviewer to click **Continue**.
+6. When the queue empties the server writes `state/decision.json` +
+   `state/prepared-message.txt` automatically; Claude reads them as the
+   record (auto-applied under `/turbo`+`/loop`; otherwise the reviewer pastes
+   the prepared message back).
 
-The server validates every v2 field for presence. A 503 means a card is incomplete — the narrator rewrites it; it never thins the content to pass.
+The server enforces the contract: every v2 field must be present, or
+`/cards.json` returns **503** with which field is missing — Claude rewrites
+the card properly rather than thinning it to pass.
 
 ### Reviewer (the human)
 
-1. Open the URL in your browser.
-2. Read the first card. All the fields you need are on the card — no diffs, no code.
-3. Choose an action in the footer:
-   - **Approve** — you're happy, move on.
-   - **Request change** — you want something different; add a note explaining what.
-   - **Ask a question** — you need more information before deciding; add the question as a note.
-4. The next card appears automatically. Use **← Back** to revisit any card.
-5. After the last card, the Summary screen lists every decision. Edit any note in place, then click **Submit review**.
-6. You'll see a "Sent — return to Claude" confirmation. Claude picks up the decision in the next turn.
+1. Open the URL.
+2. Read the card — everything you need is on it; no code required.
+3. Footer actions:
+   - **Approve** — happy → next card appears immediately.
+   - **Request a change** — add a note saying what you want different.
+   - **Ask a question** — add the question as a note.
+4. After a change/question the screen says **Paused** — go to your Claude
+   terminal. Claude handles it and tells you it's done.
+5. Click **Continue** — the next item unlocks (the remaining cards may have
+   been refreshed to match what Claude just changed).
+6. When done you'll see **"✅ All reviewed — nothing left for Claude."**
 
-**Keyboard shortcuts:** ← / → to move between cards; A to approve; C to request change; Q to ask a question.
+**Keyboard:** `A` approve · `C` request a change · `Q` ask a question.
+
+---
 
 ## Commands
 
-- `/shipgate` — run a review now (on demand).
-- `/turbo` — autonomous work cycle; Shipgate is invoked automatically at the end as the human gate.
+- **`/shipgate`** — run a review of the current cycle now.
+- **`/turbo`** — autonomous, parallel work cycle; Shipgate runs automatically
+  at the end as the human gate.
+
+## Install
+
+```
+claude plugin marketplace add /path/to/shipgate    # or the GitHub repo
+claude plugin install shipgate@shipgate
+```
+
+Then restart / `/reload-plugins`. `/shipgate` and `/turbo` become available.
+
+---
 
 ## Architecture
 
 ```
 server/
-  shipgate-server.cjs   purpose-built Node http server
-  decision.cjs          decision compiler (round-trip bus)
+  shipgate-server.cjs   purpose-built zero-dependency Node http server;
+                        owns per-card status, auto-writes the final record
+  decision.cjs          decision compiler (events → decision.json + message)
   app/
-    index.html          Studio Shipgate branded shell
-    review.js           stepwise controller (nav, actions, drawer, summary, submit)
-  start.sh / stop.sh    server launchers (write state/server-info, idle-exit)
+    index.html          Studio Shipgate branded shell (own CSS, offline)
+    review.js           interactive controller: approve-flow, Paused/Continue,
+                        risk-first resume, auto-complete
+  start.sh / stop.sh    launchers — start.sh honors --project-dir (default $PWD)
   test/
     decision.test.cjs   decision compiler regression tests
-    server.test.cjs     v2 contract validation + brand guard tests
+    server.test.cjs     v2-contract validation, status transitions, brand guard
 skills/
-  shipgate/
-    SKILL.md            narrator contract — v2 Change Card schema + worked examples
+  shipgate/SKILL.md     narrator contract — v2 Change Card schema, worked
+                        good-vs-bad examples, the active-review block contract
 ```
 
 ### Endpoints
 
 | method | path | description |
 |---|---|---|
-| GET | `/` | Studio Shipgate shell (`app/index.html`) |
-| GET | `/app/review.js` | stepwise controller |
-| GET | `/cards.json` | reads `state/cards.json`; 503 + message if any v2 field is empty |
+| GET | `/` | Studio Shipgate shell |
+| GET | `/app/review.js` | interactive controller |
+| GET | `/cards.json` | validated, risk-sorted deck; per-card `status`; `complete` flag; auto-writes the record when complete; 503 if a v2 field is empty |
 | GET | `/diff/:id` | `state/diffs/<id>.txt`, text/plain; 404 if absent |
-| POST | `/event` | append verdict JSONL to `state/events` |
-| POST | `/submit` | compile → write `decision.json` + `prepared-message.txt` |
+| POST | `/event` | append verdict JSONL **and** set card `status` (`approve→approved`, `change`/`question`→`blocked`+note); 64 KB cap, 400 on bad JSON |
+| POST | `/submit` | retained for compatibility — compiles the record (no longer the primary path) |
 
 ### State files
 
 | file | written by | read by |
 |---|---|---|
-| `state/cards.json` | narrator (Claude) | server → browser |
-| `state/diffs/<id>.txt` | narrator (Claude) | server `/diff/:id` → drawer |
-| `state/server-info` | `start.sh` | narrator reads URL |
+| `state/cards.json` | narrator (Claude); status updated by server & resolver | server → browser |
+| `state/diffs/<id>.txt` | narrator | `/diff/:id` → technical drawer |
+| `state/server-info` | `start.sh` | narrator (reads URL) |
 | `state/events` | browser → `/event` | `decision.cjs` |
-| `state/decision.json` | `decision.cjs` via `/submit` | narrator next turn |
-| `state/prepared-message.txt` | `decision.cjs` via `/submit` | user pastes to Claude (non-turbo) |
+| `state/decision.json` | `decision.cjs` (auto, on completion) | narrator next turn |
+| `state/prepared-message.txt` | `decision.cjs` (auto, on completion) | reviewer pastes to Claude (non-turbo) |
+
+---
+
+*Built by OneStudio. Private plugin — `onestudio-co/shipgate`.*
