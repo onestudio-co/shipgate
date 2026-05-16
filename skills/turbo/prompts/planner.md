@@ -16,7 +16,7 @@ Follow the standard superpowers spec format. The brainstorm's assumption log bec
 
 ## Plan rules
 
-- The plan MUST conform to the format in `~/.claude/skills/turbo/references/plan-format.md` (file-ownership DAG).
+- The plan MUST conform to the format in `references/plan-format.md` (file-ownership DAG).
 - The plan MUST enforce the three invariants in that reference (no write-write collision in a wave; wave monotonicity; no placeholder paths).
 - No TDD steps in tasks — turbo skips unit tests. Each implementer task ends with `verification-before-completion` evidence and a commit. QA tasks are generated implicitly per implementer task (see plan-format reference).
 - No execution-mode prompt at the end of the plan. Turbo always uses subagent-driven execution; do not write the standard "choose between subagent-driven and inline" handoff.

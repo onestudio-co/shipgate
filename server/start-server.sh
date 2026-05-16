@@ -88,7 +88,7 @@ PID_FILE="${STATE_DIR}/server.pid"
 LOG_FILE="${STATE_DIR}/server.log"
 
 # Create fresh session directory with content and state peers
-mkdir -p "${SESSION_DIR}/content" "$STATE_DIR"
+mkdir -p "${SESSION_DIR}/content" "$STATE_DIR" "${STATE_DIR}/diffs"
 
 # Kill any existing server
 if [[ -f "$PID_FILE" ]]; then

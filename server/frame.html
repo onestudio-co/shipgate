@@ -226,50 +226,61 @@
 </aside>
 <script>
 (function () {
-  function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-  const data = window.__SHIPGATE_CARDS__ || { title:'(no cards)', cards:[] };
-  const COLOR = { 'NEEDS-YOU':'#9a6700','DELETION':'#cf222e','BEHAVIOR':'#bf8700','SAFE':'#1f883d' };
-  const root = document.getElementById('sg-root');
-  root.innerHTML = '<div style="background:#0d1117;color:#fff;padding:14px 18px">' +
-    '<div style="font-size:12px;opacity:.7">SHIPGATE REVIEW</div>' +
-    '<div style="font-size:16px;font-weight:700">Claude finished: ' + esc(data.title) + '</div>' +
-    '<div style="font-size:12px;opacity:.8">' + data.cards.length + ' to review · nothing live until you decide</div></div>';
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'padding:16px 18px;display:flex;flex-direction:column;gap:12px';
-  data.cards.forEach((c, i) => {
-    const d = document.createElement('div');
-    d.setAttribute('data-card', c.id);
-    d.style.cssText = 'border:1px solid #d0d7de;border-left:4px solid ' + (COLOR[c.risk]||'#888') + ';border-radius:8px;padding:14px';
-    d.innerHTML =
-      '<div style="font-size:11px;text-transform:uppercase;color:' + (COLOR[c.risk]||'#656d76') + ';font-weight:700">' + esc(c.risk) + ' · ' + (i+1) + ' of ' + data.cards.length + '</div>' +
-      '<div style="font-size:15px;font-weight:700;margin:3px 0 6px">' + esc(c.title) + '</div>' +
-      '<div style="line-height:1.55"><b>What:</b> ' + esc(c.what||'') + '</div>' +
-      '<div style="line-height:1.55"><b>Why:</b> ' + esc(c.why||'') + '</div>' +
-      '<div style="line-height:1.55"><b>Safety:</b> ' + esc(c.safety||'') + '</div>' +
-      '<textarea data-note placeholder="Optional note (required for Change / Question)" style="width:100%;margin-top:8px;border:1px solid #d0d7de;border-radius:6px;padding:6px"></textarea>' +
-      '<div style="display:flex;gap:8px;margin-top:8px">' +
-      btn('#1f883d','👍 Looks good',c.id,'approve') +
-      btn('#bf8700','✏️ Change this',c.id,'change') +
-      btn('#6e7781','💬 Question',c.id,'question') +
-      (c.hasDiff ? '<button style="background:#fff;color:#0969da;border:1px solid #0969da;border-radius:6px;padding:6px 10px" onclick="shipgate.openDrawer(\'' + c.id + '\',\'' + esc(c.title) + '\')">⌗ View technical detail</button>' : '') +
-      '</div>';
-    wrap.appendChild(d);
-  });
-  root.appendChild(wrap);
-  wrap.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if(!b) return;
-    const card = b.closest('[data-card]'); shipgate.verdict(b.dataset.id, b.dataset.act, card.querySelector('[data-note]')); });
-  function btn(bg,label,id,v){ return '<button style="background:'+bg+';color:#fff;border:0;border-radius:6px;padding:6px 10px" data-act="'+v+'" data-id="'+id+'">'+label+'</button>'; }
-  window.shipgate.openDrawer = function (id, title) {
-    document.getElementById('sg-drawer-title').textContent = 'Technical detail — ' + title;
-    fetch('/diff/' + id).then(r => r.text()).then(t => { document.getElementById('sg-drawer-body').textContent = t; });
-    document.getElementById('sg-drawer').style.display = 'block';
-    document.getElementById('sg-drawer-dim').style.display = 'block';
-  };
-  window.shipgate.closeDrawer = function () {
-    document.getElementById('sg-drawer').style.display = 'none';
-    document.getElementById('sg-drawer-dim').style.display = 'none';
-  };
-  window.shipgate._refreshBar();
+  // Belt-and-suspenders: ensure window.shipgate exists even if helper.js hasn't run yet
+  window.shipgate = window.shipgate || {};
+
+  function render() {
+    function esc(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    const data = window.__SHIPGATE_CARDS__ || { title:'(no cards)', cards:[] };
+    const COLOR = { 'NEEDS-YOU':'#9a6700','DELETION':'#cf222e','BEHAVIOR':'#bf8700','SAFE':'#1f883d' };
+    const root = document.getElementById('sg-root');
+    root.innerHTML = '<div style="background:#0d1117;color:#fff;padding:14px 18px">' +
+      '<div style="font-size:12px;opacity:.7">SHIPGATE REVIEW</div>' +
+      '<div style="font-size:16px;font-weight:700">Claude finished: ' + esc(data.title) + '</div>' +
+      '<div style="font-size:12px;opacity:.8">' + data.cards.length + ' to review · nothing live until you decide</div></div>';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:16px 18px;display:flex;flex-direction:column;gap:12px';
+    data.cards.forEach((c, i) => {
+      const d = document.createElement('div');
+      d.setAttribute('data-card', c.id);
+      d.style.cssText = 'border:1px solid #d0d7de;border-left:4px solid ' + (COLOR[c.risk]||'#888') + ';border-radius:8px;padding:14px';
+      d.innerHTML =
+        '<div style="font-size:11px;text-transform:uppercase;color:' + (COLOR[c.risk]||'#656d76') + ';font-weight:700">' + esc(c.risk) + ' · ' + (i+1) + ' of ' + data.cards.length + '</div>' +
+        '<div style="font-size:15px;font-weight:700;margin:3px 0 6px">' + esc(c.title) + '</div>' +
+        '<div style="line-height:1.55"><b>What:</b> ' + esc(c.what||'') + '</div>' +
+        '<div style="line-height:1.55"><b>Why:</b> ' + esc(c.why||'') + '</div>' +
+        '<div style="line-height:1.55"><b>Safety:</b> ' + esc(c.safety||'') + '</div>' +
+        '<textarea data-note placeholder="Optional note (required for Change / Question)" style="width:100%;margin-top:8px;border:1px solid #d0d7de;border-radius:6px;padding:6px"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:8px">' +
+        btn('#1f883d','👍 Looks good',c.id,'approve') +
+        btn('#bf8700','✏️ Change this',c.id,'change') +
+        btn('#6e7781','💬 Question',c.id,'question') +
+        (c.hasDiff ? '<button style="background:#fff;color:#0969da;border:1px solid #0969da;border-radius:6px;padding:6px 10px" onclick="shipgate.openDrawer(\'' + c.id + '\',\'' + esc(c.title) + '\')">⌗ View technical detail</button>' : '') +
+        '</div>';
+      wrap.appendChild(d);
+    });
+    root.appendChild(wrap);
+    wrap.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if(!b) return;
+      const card = b.closest('[data-card]'); shipgate.verdict(b.dataset.id, b.dataset.act, card.querySelector('[data-note]')); });
+    function btn(bg,label,id,v){ return '<button style="background:'+bg+';color:#fff;border:0;border-radius:6px;padding:6px 10px" data-act="'+v+'" data-id="'+id+'">'+label+'</button>'; }
+    window.shipgate.openDrawer = function (id, title) {
+      document.getElementById('sg-drawer-title').textContent = 'Technical detail — ' + title;
+      fetch('/diff/' + id).then(r => r.text()).then(t => { document.getElementById('sg-drawer-body').textContent = t; });
+      document.getElementById('sg-drawer').style.display = 'block';
+      document.getElementById('sg-drawer-dim').style.display = 'block';
+    };
+    window.shipgate.closeDrawer = function () {
+      document.getElementById('sg-drawer').style.display = 'none';
+      document.getElementById('sg-drawer-dim').style.display = 'none';
+    };
+    window.shipgate._refreshBar();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', render);
+  } else {
+    render();
+  }
 })();
 </script>
 

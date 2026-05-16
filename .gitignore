@@ -2,3 +2,4 @@ node_modules/
 .shipgate/
 *.log
 .DS_Store
+.superpowers/

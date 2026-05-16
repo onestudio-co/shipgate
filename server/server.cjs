@@ -156,8 +156,19 @@ function startServer({ contentDir, stateDir, host, port: bindPort }) {
 
       // POST /event  → append verdict to state/events (proven bus)
       if (req.method === 'POST' && req.url === '/event') {
-        let b = ''; req.on('data', c => b += c); req.on('end', () => {
-          try { JSON.parse(b); fs.appendFileSync(path.join(stateDir,'events'), b.trim()+'\n'); } catch {}
+        const MAX_EVENT_BYTES = 64 * 1024;
+        let b = ''; let overflow = false;
+        req.on('data', c => {
+          if (overflow) return;
+          b += c;
+          if (Buffer.byteLength(b) > MAX_EVENT_BYTES) {
+            overflow = true; req.destroy(); res.writeHead(413); res.end('payload too large');
+          }
+        });
+        req.on('end', () => {
+          if (overflow) return;
+          try { JSON.parse(b); } catch (e) { res.writeHead(400); res.end('bad json'); return; }
+          fs.appendFileSync(path.join(stateDir,'events'), b.trim()+'\n');
           res.writeHead(200); res.end('ok');
         }); return;
       }
@@ -191,12 +202,19 @@ function startServer({ contentDir, stateDir, host, port: bindPort }) {
             });
             const deckData = { ...manifest, cards: sorted };
             let html = frameTemplate;
-            // Inject __SHIPGATE_CARDS__ before </body>
-            const injection = '<script>window.__SHIPGATE_CARDS__ = ' + JSON.stringify(deckData) + ';</script>\n' + helperInjection;
-            if (html.includes('</body>')) {
+            // Escape JSON so </script> and line terminators can't break out of <script>
+            const safeJson = JSON.stringify(deckData)
+              .replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+              .replace(new RegExp(' ', 'g'), '\\u2028').replace(new RegExp(' ', 'g'), '\\u2029');
+            // Inject __SHIPGATE_CARDS__ and helper.js BEFORE the consuming IIFE
+            // by placing them right after <body> so they execute first
+            const injection = '<script>window.__SHIPGATE_CARDS__ = ' + safeJson + ';</script>\n' + helperInjection;
+            if (html.includes('<body>')) {
+              html = html.replace('<body>', '<body>\n' + injection);
+            } else if (html.includes('</body>')) {
               html = html.replace('</body>', injection + '\n</body>');
             } else {
-              html += injection;
+              html = injection + html;
             }
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             return res.end(html);
