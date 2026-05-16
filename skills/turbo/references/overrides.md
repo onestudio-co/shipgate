@@ -16,6 +16,11 @@ This document is the single source of truth for what turbo overrides and what it
 | Final user code-review handoff | Coordinator runs `requesting-code-review` against full diff; fixes applied via fresh implementer subagent before user sees the branch. |
 | `finishing-a-development-branch` — present merge/PR/cleanup options to user | **Merge to base branch by default.** PR is opt-in via explicit `--pr` flag in the `/turbo` argument string (mirrors the TDD opt-in pattern). `--no-merge` (or "leave branch", "for review") restores the old behavior of leaving the branch on the worktree. Merge conflicts at integration → abort the merge, surface as Critical in final report. |
 
+- End-of-run human gate → invoke the `shipgate` skill (plain-language Change
+  Card review) instead of leaving a raw diff. Under `/loop`, the next wake
+  consumes `state/decision.json`; promotion/merge happens only after the
+  shipgate decision is `approve` for all gating cards.
+
 ## Preserved (turbo does NOT override these)
 
 - `verification-before-completion` — no completion claims without evidence. Non-negotiable.

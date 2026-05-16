@@ -22,6 +22,8 @@ See `references/overrides.md` for the canonical list. Summary:
 - "Push branch, leave for human merge" → **merge to base branch by default** at end of run. PR is opt-in via explicit `--pr` flag (mirrors the TDD opt-in pattern).
 
 What turbo does NOT override: `verification-before-completion`, `using-git-worktrees`, `requesting-code-review`, `systematic-debugging`, `finishing-a-development-branch`.
+Turbo's end-of-run review is delegated to the bundled `shipgate` skill (the
+non-technical human gate) — see references/overrides.md.
 
 ## Hard stops
 
