@@ -86,3 +86,32 @@
 
   connect();
 })();
+
+// shipgate: per-card verdicts + submit
+window.shipgate = window.shipgate || {};
+window.shipgate.verdict = function (cardId, verdict, noteEl) {
+  const note = noteEl ? (noteEl.value || '').trim() : '';
+  if ((verdict === 'change' || verdict === 'question') && !note) {
+    alert('Add a short note for "' + verdict + '" before continuing.'); return;
+  }
+  fetch('/event', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ type:'verdict', cardId, verdict, note, ts: Date.now() }) });
+  const card = document.querySelector('[data-card="' + cardId + '"]');
+  if (card) { card.dataset.verdict = verdict; }
+  shipgate._refreshBar();
+};
+window.shipgate._refreshBar = function () {
+  const cards = [...document.querySelectorAll('[data-card]')];
+  const done = cards.filter(c => c.dataset.verdict).length;
+  const bar = document.getElementById('sg-bar');
+  const btn = document.getElementById('sg-submit');
+  if (bar) bar.textContent = done + ' of ' + cards.length + ' reviewed';
+  if (btn) btn.disabled = done < cards.length;
+};
+window.shipgate.submit = function () {
+  fetch('/submit', { method:'POST' }).then(r => r.json()).then(j => {
+    const s = document.getElementById('sg-status');
+    if (j.ok) { if (s) s.textContent = '✅ Submitted. Return to Claude — your decision was sent.'; }
+    else { if (s) s.textContent = '⚠ ' + (j.error || 'submit failed'); }
+  });
+};
