@@ -1,7 +1,7 @@
 {
   "name": "shipgate",
-  "version": "0.3.1",
-  "description": "Non-technical change review: turns end-of-cycle agent changes into plain-language Change Cards a founder/PM/designer reviews in a browser, round-tripping the decision back to Claude. Bundles /turbo (its autonomous-run human gate).",
+  "version": "0.4.0",
+  "description": "Non-technical change review: turns end-of-cycle agent changes into plain-language Change Cards a founder/PM/designer reviews in a browser, round-tripping the decision back to Claude. Bundles /turbo, a separate autonomous parallel work cycle.",
   "author": {
     "name": "OneStudio"
   }

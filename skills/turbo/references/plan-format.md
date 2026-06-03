@@ -69,6 +69,12 @@ Wave 1 has two tasks (T02, T03) writing to different files — safe to paralleli
 
 ## QA + lint coupling
 
-QA tasks are NOT in the DAG. They are generated implicitly: one QA task per implementer task. The QA task is owned by the QA agent (not an implementer) and reads the implementer's `files_write` to know what to test. QA tasks do not gate the next wave — they run as a continuous stream alongside implementation (see SKILL.md §critical-path).
+QA and lint are NOT in the DAG. They are Workflow streams, not tasks (see
+`references/workflow-script.md`). The QA stream reads each committed wave's `files_write` to
+know what to test and writes test files (write-only — committed by the serialized committer,
+not the QA agent). It does not gate the next wave; it pipelines alongside implementation.
 
-Lint tasks are also NOT in the DAG up-front. They are generated dynamically at end-of-wave when the linter discovers failures. Each lint-fix task is attached to the earliest open wave (typically the wave currently in progress) and is owned by the implementer who wrote the offending file.
+The lint stream runs once per committed wave, read-only, and returns failures as structured
+data. The coordinator turns each failure into a `lint-fix` task injected into the live wave,
+dispatched to a fresh write-only implementer (the committer commits the fix). Lint is never a
+DAG node up-front.
