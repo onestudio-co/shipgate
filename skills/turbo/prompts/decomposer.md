@@ -96,17 +96,17 @@ iterations:
 - **No external integrations unless the brief explicitly asks for them.** Honor any feedback memories the coordinator passes you (e.g. `[[feedback-whatsapp-official]]` postponed = do not schedule WA-bridge work).
 - **No placeholders.** `TBD`, `TODO`, `appropriate`, `etc.`, `<...>` all forbidden anywhere except inside the schema example block.
 
-## Output back to coordinator
+## Output back to coordinator (DECOMPOSER_RESULT schema)
 
-Return a structured response (not the full manifest body):
+Write the full manifest to disk (above), then return structured data (not the manifest body):
 
 ```
-Manifest written: <path>
-Iteration count: <N>
-First iter id: <id>
-First iter feature ids: [<list>]
-Total estimated weight: <sum>
-Any concerns or open questions: <bullet list or "none">
+{ manifest_path,
+  iteration_count,
+  first_iter_id,
+  first_iter_feature_ids: [ ... ],
+  total_estimated_weight,
+  concerns: [ ... ] }   // empty array if none
 ```
 
 The coordinator uses this to immediately begin iter 1 (the manifest's first pending iter) using the standard turbo flow, and will call `ScheduleWakeup` at end of iter 1 to chain iter 2.

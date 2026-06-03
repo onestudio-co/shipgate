@@ -9,8 +9,10 @@ the exact decision being put to you, and a plain-English before/after — **no
 diffs, no pull requests, no red and green lines**. The technical detail is one
 optional click away for anyone who wants it.
 
-Shipgate also bundles **`/turbo`** and is its end-of-run human gate, so even an
-autonomous run lands in front of a person who can actually approve it.
+Shipgate also bundles **`/turbo`**, an autonomous parallel work cycle. Turbo and
+Shipgate are separate skills: turbo runs on its own and ends with its own report
+on a merged branch. When you want the plain-language review, run `/shipgate`
+yourself — turbo no longer opens it for you.
 
 ---
 
@@ -19,7 +21,7 @@ autonomous run lands in front of a person who can actually approve it.
 | Command | What it does |
 |---|---|
 | `/shipgate` | Review the current cycle of changes now. |
-| `/turbo` | Run an autonomous work cycle; Shipgate opens automatically at the end as the review gate. |
+| `/turbo` | Run an autonomous, parallel work cycle (worktree-isolated). Each iteration runs as one dynamic Workflow. Ends with its own report; run `/shipgate` separately if you want the plain-language review. |
 
 Shipgate also runs on its own at the end of a normal work cycle — you don't
 have to ask. You'll be handed a local URL to open.
