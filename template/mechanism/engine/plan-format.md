@@ -56,6 +56,22 @@ serial execution and writes "DAG validation failed: <reason>" at the top of the 
 The planner MUST keep each wave at ≤4 tasks. This keeps `parallel()` well under the
 `min(16, cores-2)` concurrency cap and prevents prompt-length blowup in the committer.
 
+## Template-plan fast path (known patterns)
+
+When the brief matches a registered repeatable pattern (e.g. an alarm-family: audit table
++ view + endpoint + tile + runbook), the planner emits the pattern's known DAG directly and
+SKIPS the LLM planning pass. Evidence (exp 2026-06-08): on templated work a 3-strategy
+planner panel produced an *identical* DAG for 4× the cost and the slowest build, and even a
+single LLM planner crashed once mid-run. A deterministic template plan is faster and
+crash-proof. Fallback order:
+
+1. matched template DAG (no LLM), else
+2. single planner (opus), else
+3. canonical/hand-written DAG (the existing fallback).
+
+Non-templated / open-ended briefs still use the single planner. A planner *panel* is only
+worth its cost when the design space is genuinely open — never for pattern-work.
+
 ## Worked example
 
 A small frontend feature with backend + frontend + tests:
