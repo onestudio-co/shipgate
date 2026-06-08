@@ -65,6 +65,36 @@ Run c1-feed-analytics produced 5 raw findings that deduped to 2 real ones — a 
 duplicate rate (genesis had 0%) because separate lenses flagged the same line.
 Dedup-before-verify avoids verifying the same finding multiple times.
 
+## Review economics (exp 2026-06-08)
+
+Across 5 build-orchestration variants, review/verify was 60-79% of all agent-work and the
+verifier rubber-stamped (confirm rates 15/16 .. 26/26, including a *false* "missing
+migration"). The review is the build cycle's real cost sink, not the build parallelism.
+Rules:
+
+- **Separate review phase, never overlapped with the build.** Overlapping it steals build
+  concurrency slots and slows the build. (The build itself is cheap — dependency-pipelined.)
+- **Dedup, then drop out-of-scope findings** (anything on a file the plan did not produce).
+  A scope-creep finding once made a fixer build an unrequested subsystem and `git add -A`
+  deleted a real deliverable.
+- **Verify ONLY critical/major** findings adversarially (require quoted refuting evidence,
+  default is_real=false). Send minor findings to ONE batched triage agent. Never one
+  verifier per finding.
+- **Scoped fixer + scoped commit:** the fixer edits only the confirmed-finding files (no new
+  files, no deletes); the committer stages only those files (never `git add -A`).
+
+This cut a real build's review from ~70% of the run to ~half, at **1 verify agent** instead
+of 16, and dropped total tokens ~28% with zero scope creep.
+
+## Worktree-per-lane (escalation only)
+
+Default to a single shared worktree + the async commit-queue (the standard build path). Use
+per-lane worktrees + merge-back ONLY when the DAG has ≥2 fully-independent lanes of ≥3 tasks
+each — and FIRST pin shared conventions (component primitives, shared-file shapes) in the
+spec, or isolated lanes diverge (exp 2026-06-08: two lanes independently chose different tile
+implementations and changed a shared file's shape). Parallel commits are the fastest build,
+but the merge + divergence cost is only worth it at real lane scale.
+
 ---
 
 ## Risks
