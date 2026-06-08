@@ -118,14 +118,19 @@ per-task commits for the whole wave. Persist the choice per wave, e.g.
 ## Phase shape
 
 ```
-phase Waves   → for each wave: parallel() write-only implementers
-                → wave barrier → 1 serialized committer
-                → lint + QA pipeline against the next wave (read-only, overlapped)
-phase Review  → multi-lens review → adversarial verify each finding → fix → commit
+phase Build   → dependency-scheduled write-only implementers (each starts when ITS deps
+                finish, not at a wave barrier) → single async serialized commit-queue
+                (the only git writer) → lint once + QA per-task, both committed via the queue
+phase Review  → 3-lens review → dedup → IN-SCOPE filter → verify ONLY critical/major
+                (adversarial, rejects out-of-scope) → batched triage of minor → SCOPED fix
+                → commit only the named files
 ```
 
-Only the **read-only** stages (lint, QA-read, review) pipeline against the next wave's
-writes. Writes + commits are barriered at the wave boundary by the safety invariant above.
+The commit-queue is the single git writer, so INVARIANT §2/§3 (write/commit split, one
+serialized committer) still hold — the per-wave *barrier* is gone, but the *serialization*
+of git is not. The DAG gives every same-file task pair a dependency edge, so no two
+concurrently-running implementers write the same file (INVARIANT §1). Review is a separate
+phase (NOT overlapped) because overlapping it steals build concurrency (exp 2026-06-08).
 
 ## Schemas (structured agent returns)
 
@@ -186,8 +191,8 @@ failing silently.
 ```js
 export const meta = {
   name: 'kaizen-iter',
-  description: 'Execute one kaizen iteration: pipelined waves (write-only implementers + serialized committer) then adversarial review.',
-  phases: [{ title: 'Waves' }, { title: 'Review' }],
+  description: 'Execute one kaizen iteration: dependency-scheduled write-only implementers + a single async commit-queue, then a capped, scoped review.',
+  phases: [{ title: 'Build' }, { title: 'Review' }],
 }
 
 // GOTCHA (from the POC): `args` can arrive as a JSON *string*, not an object.
@@ -199,88 +204,93 @@ const { worktree, specPath, planPath, waves, qaActive, lintConfigured, baseBranc
 // Agent files: .claude/agents/kaizen-implementer.md, kaizen-committer.md, etc.
 // Model and schema live here — the agent file's model: frontmatter is documentation only.
 
-phase('Waves')
-// Read-only lint/QA of wave N pipeline against wave N+1 writes; writes+commits barrier per wave.
-const qaStream = []     // unresolved QA Promises; drained after all waves
-const lintStream = []   // unresolved lint-fix Promises; drained before QA drain
-const implementerResults = []  // all implementer results across waves
-const committerResults = []    // all committer results across waves
-for (const wave of waves) {
-  // 1. Parallel write-only implementers — disjoint files_write, no git.
-  //    Inline .claude/agents/kaizen-implementer.md body as prompt string.
-  const results = await parallel(wave.tasks.map((t) => () =>
-    agent(implementerPrompt(t, specPath, planPath, worktree), {
-      label: `impl:${t.id}`, phase: 'Waves', model: 'sonnet', schema: IMPLEMENTER_RESULT,
-    })
-  ))
-  implementerResults.push(...results.filter(Boolean))
-  const done = results.filter(Boolean)
-  const blocked = done.filter((r) => r.status === 'blocked' || r.status === 'needs_context')
-  // (Failure handling: re-dispatch blocked tasks per SKILL.md before committing the wave.)
-
-  // 2. Wave barrier → ONE serialized committer for the wave's implementer files
-  //    (no index-lock race — the committer is the only git writer).
-  //    Inline .claude/agents/kaizen-committer.md body as prompt string.
-  const committerResult = await agent(committerPrompt(wave, done, worktree), {
-    label: `commit:wave-${wave.n}`, phase: 'Waves', model: 'haiku', schema: COMMITTER_RESULT,
-  })
-  if (committerResult) committerResults.push(committerResult)
-
-  // 3. Read-only / write-only streams pipeline against the next wave (do not barrier the loop).
-  if (lintConfigured) {
-    // Capture the lint Promise in lintStream — do NOT fire-and-forget, or
-    // "failures become fix tasks" never happens and the lint-fix committer would race the
-    // next wave's committer on .git/index.lock (violates INVARIANT §2 and §3).
-    // lintStream is drained (await Promise.all) after the wave loop, before the QA drain.
-    lintStream.push(
-      agent(lintPrompt(wave, worktree), { label: `lint:wave-${wave.n}`, phase: 'Waves', model: 'haiku', schema: LINT_RESULT })
-        .then(async (lint) => {
-          if (lint && !lint.clean && lint.failures.length) {
-            await agent(lintFixPrompt(lint.failures, worktree), { label: `lint-fix:wave-${wave.n}`, phase: 'Waves', model: 'sonnet', schema: IMPLEMENTER_RESULT })
-            await agent(committerPrompt({ n: `lint-${wave.n}` }, [], worktree), { label: `commit:lint-${wave.n}`, phase: 'Waves', model: 'haiku', schema: COMMITTER_RESULT })
-          }
-        })
-    )
-  }
-  if (qaActive) {
-    // QA writes test files (write-only, no git). Collect the promise; commit at the end
-    // so the wave loop is never barriered on QA.
-    // Inline .claude/agents/kaizen-qa.md body as prompt string.
-    qaStream.push(agent(qaPrompt(wave, worktree), { label: `qa:wave-${wave.n}`, phase: 'Waves', model: 'sonnet', schema: QA_RESULT }))
+phase('Build')
+// Dependency-scheduled write-only implementers + ONE async serialized commit-queue.
+// (exp 2026-06-08: the per-wave BARRIER and the shared .git/index.lock were the two
+// build bottlenecks. A task starts when ITS deps finish, not when its whole wave does;
+// commits drain through a single async queue, so the committer is still the ONLY git
+// writer — INVARIANT §2/§3 hold. The DAG gives every same-file pair a dependency edge,
+// so no two CONCURRENTLY-running tasks ever write the same file — INVARIANT §1 holds.)
+const allTasks = waves.flatMap((w) => w.tasks)
+const implementerResults = []
+const committerResults = []
+const qaStream = []
+const done = {}                       // task.id -> Promise of IMPLEMENTER_RESULT
+let commitChain = Promise.resolve()   // the ONLY git writer; every commit chains here
+const enqueueCommit = (label, files) => {
+  if (!files || !files.length) return
+  commitChain = commitChain.then(() =>
+    agent(committerPrompt({ n: label }, files, worktree), { label: `commit:${label}`, phase: 'Build', model: 'haiku', schema: COMMITTER_RESULT })
+      .then((c) => { if (c) committerResults.push(c) }))
+}
+for (const t of allTasks) {
+  done[t.id] = (async () => {
+    await Promise.all((t.depends_on || []).map((d) => done[d]))
+    const r = await agent(implementerPrompt(t, specPath, planPath, worktree), { label: `impl:${t.id}`, phase: 'Build', model: 'sonnet', schema: IMPLEMENTER_RESULT })
+    if (r) implementerResults.push(r)
+    // (Failure handling: re-dispatch blocked/needs_context tasks per SKILL.md before enqueuing the commit.)
+    if (r) enqueueCommit(t.id, Array.from(new Set(r.files_written || [])))
+    if (qaActive) qaStream.push(agent(qaPrompt(t, worktree), { label: `qa:${t.id}`, phase: 'Build', model: 'sonnet', schema: QA_RESULT }))
+    return r
+  })()
+}
+await Promise.all(Object.values(done))
+// Lint once over the tree (read-only); route any fix-commit through the same queue.
+if (lintConfigured) {
+  const lint = await agent(lintPrompt({ n: 'all' }, worktree), { label: 'lint', phase: 'Build', model: 'haiku', schema: LINT_RESULT })
+  if (lint && !lint.clean && lint.failures.length) {
+    const fix = await agent(lintFixPrompt(lint.failures, worktree), { label: 'lint-fix', phase: 'Build', model: 'sonnet', schema: IMPLEMENTER_RESULT })
+    enqueueCommit('lint', (fix && fix.files_written) || [])
   }
 }
-// Drain the lint stream first (lint-fix committers must finish before QA committer starts).
-if (lintStream.length) await Promise.all(lintStream)
-// Drain the QA stream once, after all waves, then a single committer pass for the test files.
+// Drain QA, then commit test files through the queue.
 let qaResults = []
 if (qaStream.length) {
   qaResults = (await Promise.all(qaStream)).filter(Boolean)
-  const testFiles = qaResults.flatMap((r) => r.tests_written || [])
-  if (testFiles.length) {
-    await agent(qaCommitPrompt(testFiles, worktree), {
-      label: 'commit:qa', phase: 'Waves', model: 'haiku', schema: COMMITTER_RESULT,
-    })
-  }
+  enqueueCommit('qa', qaResults.flatMap((r) => r.tests_written || []))
 }
+await commitChain                     // all build commits drained before review
 
 phase('Review')
-// Multi-lens review → adversarially verify each finding → keep only confirmed → fix.
-// Inline .claude/agents/kaizen-reviewer.md body as prompt string.
-const DIMENSIONS = ['correctness', 'security', 'perf', 'scope']
+// Separate phase — NOT overlapped with the build (exp 2026-06-08: overlapping review
+// stole concurrency slots and SLOWED the build). Cheap + precise instead of a fan-out:
+// dedup → IN-SCOPE filter → verify ONLY critical/major adversarially → batched triage of
+// minor → SCOPED fix. This cut review work from ~70% of the run to ~half at 1 verify agent.
+const DELIVERABLES = new Set(allTasks.flatMap((t) => t.files_write || []))
+const inDeliverables = (file) => !!file && [...DELIVERABLES].some((d) => file === d || file.endsWith(d))
+const DIMENSIONS = ['correctness', 'security', 'scope']
 const reviewResults = (await parallel(DIMENSIONS.map((d) => () =>
   agent(reviewPrompt(d, worktree, baseBranch), { label: `review:${d}`, phase: 'Review', model: 'sonnet', schema: REVIEW_FINDINGS })
 ))).filter(Boolean)
-const found = reviewResults.flatMap((r) => r.findings)
-
-const verified = await parallel(found.map((f) => () =>
+// DEDUP by file+title, then drop anything not on a file the plan actually produced
+// (kills scope-creep findings like "add a missing subsystem" before they reach a fixer).
+const seen = new Set()
+const inScope = reviewResults.flatMap((r) => r.findings || []).filter((f) => {
+  const k = `${f.file}::${(f.title || '').toLowerCase()}`
+  if (seen.has(k) || !inDeliverables(f.file)) return false
+  seen.add(k); return true
+})
+const major = inScope.filter((f) => ['critical', 'major'].includes((f.severity || '').toLowerCase()))
+const minor = inScope.filter((f) => !['critical', 'major'].includes((f.severity || '').toLowerCase()))
+// Verify ONLY critical/major; verifyPrompt instructs the agent to default is_real=false
+// AND to reject out-of-scope findings (add-new-file / new-subsystem) — see helper note below.
+const verified = await parallel(major.map((f) => () =>
   agent(verifyPrompt(f, worktree), { label: `verify:${f.id}`, phase: 'Review', model: 'sonnet', schema: VERIFY_VERDICT })
     .then((v) => ({ ...f, real: v?.is_real }))
 ))
-const confirmed = verified.filter(Boolean).filter((f) => f.real)
-
-if (confirmed.length) {
-  await agent(fixPrompt(confirmed, worktree), { label: 'review-fix', phase: 'Review', model: 'sonnet', schema: IMPLEMENTER_RESULT })
-  await agent(committerPrompt({ n: 'review' }, [], worktree), { label: 'commit:review', phase: 'Review', model: 'haiku', schema: COMMITTER_RESULT })
+let confirmed = verified.filter(Boolean).filter((f) => f.real)
+// One batched triage agent for ALL minor findings (not one verifier each).
+if (minor.length) {
+  const triage = await agent(triagePrompt(minor, worktree, [...DELIVERABLES]), { label: 'triage:minor', phase: 'Review', model: 'sonnet', schema: REVIEW_FINDINGS })
+  confirmed = confirmed.concat(((triage && triage.findings) || []).filter((f) => inDeliverables(f.file)))
+}
+const reviewFixFiles = Array.from(new Set(confirmed.map((f) => f.file).filter(inDeliverables)))
+if (confirmed.length && reviewFixFiles.length) {
+  // SCOPED fixer: fixPrompt forbids new files / deletes / out-of-list edits. The committer
+  // stages ONLY reviewFixFiles (never `-A`), so a stray edit can never be committed
+  // (exp 2026-06-08: an unscoped `git add -A` review-fix once deleted a deliverable).
+  await agent(fixPrompt(confirmed, reviewFixFiles, worktree), { label: 'review-fix', phase: 'Review', model: 'sonnet', schema: IMPLEMENTER_RESULT })
+  await agent(committerPrompt({ n: 'review' }, reviewFixFiles, worktree), { label: 'commit:review', phase: 'Review', model: 'haiku', schema: COMMITTER_RESULT })
 }
 
 // Collect all learnings for the run report → passed to kaizen-sensei in the RETRO phase.
@@ -296,7 +306,17 @@ return { waves: waves.length, confirmedFindings: confirmed.length, learnings: ru
 
 The prompt-builder helpers (`implementerPrompt`, `committerPrompt`, etc.) inline the
 matching `.claude/agents/kaizen-*.md` content plus the task's spec and the worktree path.
-The committer prompt carries the per-wave granularity decision.
+
+Three helper contracts changed with the v2 review (exp 2026-06-08):
+- `verifyPrompt(f, worktree)` — must instruct the agent to default `is_real=false` AND to
+  reject **out-of-scope** findings (anything asking to add a new file / new subsystem / edit
+  a file outside the reviewed diff). Out-of-scope is not a review fix.
+- `fixPrompt(confirmed, fixFiles, worktree)` — takes an explicit `fixFiles` allow-list and
+  instructs the fixer to edit ONLY those files: no new files, no deletes, no `-A`.
+- `triagePrompt(minorFindings, worktree, deliverableFiles)` — one batched agent that returns
+  only the minor findings worth fixing (and only on `deliverableFiles`), replacing one
+  verifier-per-finding.
+`committerPrompt({ n }, files, worktree)` stages exactly `files` — never `git add -A`.
 
 ## Kaizen memory loading at dispatch
 
