@@ -1,89 +1,73 @@
 # Studio Shipgate
 
-**Plain-language change review for the people who decide — founders, PMs, designers — not engineers.**
+**Two autonomous work cycles for Claude Code: `/turbo` and `/kaizen`.**
 
-When Claude finishes a cycle of work, Shipgate turns *"what changed"* into a
-guided, one-thing-at-a-time review in your browser. Each change is a
-**Change Card**: what changed, why, what it means for the product or business,
-the exact decision being put to you, and a plain-English before/after — **no
-diffs, no pull requests, no red and green lines**. The technical detail is one
-optional click away for anyone who wants it.
-
-Shipgate also bundles **`/turbo`**, an autonomous parallel work cycle. Turbo and
-Shipgate are separate skills: turbo runs on its own and ends with its own report
-on a merged branch. When you want the plain-language review, run `/shipgate`
-yourself — turbo no longer opens it for you.
-
----
-
-## Using it
+This plugin bundles two parallel, worktree-isolated work cycles. They share the
+same execution engine (write-only implementers grouped by a file-ownership DAG, a
+single serialized committer per wave, then an adversarial review pass) but differ
+in how much they remember and tune themselves.
 
 | Command | What it does |
 |---|---|
-| `/shipgate` | Review the current cycle of changes now. |
-| `/turbo` | Run an autonomous, parallel work cycle (worktree-isolated). Each iteration runs as one dynamic Workflow. Ends with its own report; run `/shipgate` separately if you want the plain-language review. |
+| `/turbo <task>` | Generic autonomous cycle. Stateless and stable — nothing to set up, nothing it changes about itself. Best for one-off "just build/fix this fast" work. |
+| `/kaizen <workflow> <brief>` | **Self-improving** cycle. Adds playbooks, per-agent memory + domain maps, and a mandatory retro that edits its own files so it gets sharper every run. `<workflow>` = idea · prototype · build · fix · refactor · release (omit it and a cheap router picks one). |
 
-Shipgate also runs on its own at the end of a normal work cycle — you don't
-have to ask. You'll be handed a local URL to open.
+Each iteration of either runs as one dynamic `Workflow` and ends with a report on a
+merged branch. Both always run in a git worktree; you review the final diff.
 
-### Install
+> **Note:** earlier versions of this plugin were a non-technical "Change Card" review
+> surface. That feature has been removed — this plugin is now turbo + kaizen only.
+
+---
+
+## Install
 
 ```
 claude plugin marketplace add onestudio-co/shipgate     # or a local path
 claude plugin install shipgate@shipgate
 ```
 
-Then restart Claude Code (or `/reload-plugins`). `/shipgate` and `/turbo`
-become available.
+Then restart Claude Code (or `/reload-plugins`). `/turbo` and `/kaizen` become
+available. **Superpowers must be installed** — both cycles override and preserve
+superpowers skills (verification, worktrees, code review, debugging).
 
 ---
 
-## What a review feels like
+## `/turbo` — generic autonomous cycle
 
-You get a URL. Open it. You see **one change at a time** — read it, decide,
-move on. Every card is written for a decision-maker, not a developer.
+`/turbo <natural-language task>`. Use it when you want speed and you trust the
+worktree-isolation safety net. It auto-decomposes oversized scope into a
+multi-iteration manifest, skips TDD by default, and merges to the base branch at the
+end (PR is opt-in via `--pr`). See `skills/turbo/SKILL.md`.
 
-For each card you do one of three things:
+## `/kaizen` — self-improving cycle (scaffolds into your repo)
 
-- **Approve** — you're happy. The next change appears immediately. Approvals
-  never slow you down; you can move through them as fast as you like.
-- **Request a change** — something should be different. Add a short note
-  saying what.
-- **Ask a question** — you need more before you can decide. Add the question.
+Kaizen is turbo's engine plus three pillars: **playbooks**, **per-agent memory +
+domain maps**, and a **mandatory self-editing retro** (`kaizen-sensei`) that runs
+after every cycle — even on failure.
 
-The moment you request a change or ask a question, the review **pauses** and
-tells you to go back to Claude. That's deliberate — you should never review
-the rest while something earlier is unresolved. Go to your Claude terminal;
-Claude actually does the work (makes the change, or answers you) and refreshes
-the rest of the review so it stays true to reality. When Claude says it's
-done, click **Continue** and the next item unlocks.
+Because kaizen rewrites its own playbooks, prompts, and memory, it can't run from the
+read-only plugin. So on the **first** `/kaizen` in a repo it **scaffolds an editable
+copy into the project**:
 
-When nothing is left, you'll see **"✅ All reviewed — nothing left for
-Claude."** Your decisions are recorded automatically — there's no form to
-submit, and no going back: approved is approved.
+```
+.claude/kaizen/          # the kaizen skill, engine, playbooks, memory, telemetry, CHANGELOG
+.claude/agents/kaizen-*.md   # 7 role agents (planner, implementer, committer, …)
+```
 
-**Keyboard:** `A` approve · `C` request a change · `Q` ask a question.
+From then on kaizen runs from those project-local files and evolves them in place —
+each repo grows its own tuned kaizen. The plugin only seeds files when they are
+**absent**; it never overwrites what your repo has already learned. (Syncing improved
+files back into the plugin is not automated yet.)
 
-### The technical detail, if you want it
+Layout inside the plugin:
 
-Every card has a **"View technical detail"** button. It opens a side panel
-with the raw change for that item. You never need it to decide — it's there
-purely for the technically curious. The card itself is always enough.
-
----
-
-## What Claude does behind it
-
-You don't need to know this to use Shipgate, but briefly: Claude writes the
-review by grouping the work into changes *by intent* (a feature, a decision, a
-deletion), explains each in plain language, and orders them so the ones
-needing your judgement come first. While you review, anything you flag comes
-straight back to Claude to resolve before you continue. Your final set of
-decisions is handed back to Claude to act on.
-
-Implementation detail (server, contract, state) lives in
-[`docs/specs/2026-05-16-shipgate-v2-stepwise-design.md`](docs/specs/2026-05-16-shipgate-v2-stepwise-design.md)
-— not here. This file is for using Shipgate.
+```
+skills/kaizen/SKILL.md   # thin entry: scaffolds the template, then runs the project copy
+template/mechanism/      # the kaizen skill + engine + playbooks (copied to .claude/kaizen/)
+template/agents/         # the 7 role agents (copied to .claude/agents/)
+template/memory-seed/    # empty memory store for a fresh repo
+```
 
 ---
 

@@ -1,0 +1,2 @@
+# kaizen telemetry — one JSON object per run (A7 schema). Appended by kaizen-sensei only.
+# schema: {ts, run_id, workflow, slug, phase_tokens:{load,prepare,execute,retro}, phase_ms:{load,prepare,execute,retro}, waves, tasks, blocked, confirmed_findings, assumptions_count, self_edits, learnings_seen}

@@ -29,7 +29,7 @@ See `references/overrides.md` for the canonical list. Summary:
 
 What turbo does NOT override: `verification-before-completion`, `using-git-worktrees`, `requesting-code-review`, `systematic-debugging`, `finishing-a-development-branch`.
 
-Turbo and `shipgate` are **fully separate skills**. Turbo does NOT invoke shipgate at end-of-run. Turbo's human gate is the user reviewing the final merged diff / final report. The user runs `shipgate` separately, on demand, when they want the non-technical Change Card review.
+Turbo is fully autonomous and self-contained. Its human gate is the user reviewing the final merged diff / final report at end-of-run — there is no mid-cycle review step.
 
 ## Hard stops
 

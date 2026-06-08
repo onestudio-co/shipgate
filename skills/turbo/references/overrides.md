@@ -16,13 +16,6 @@ This document is the single source of truth for what turbo overrides and what it
 | Final user code-review handoff | Coordinator runs `requesting-code-review` against full diff; fixes applied via fresh implementer subagent before user sees the branch. |
 | `finishing-a-development-branch` — present merge/PR/cleanup options to user | **Merge to base branch by default.** PR is opt-in via explicit `--pr` flag in the `/turbo` argument string (mirrors the TDD opt-in pattern). `--no-merge` (or "leave branch", "for review") restores the old behavior of leaving the branch on the worktree. Merge conflicts at integration → abort the merge, surface as Critical in final report. |
 
-## Separation from shipgate
-
-Turbo and `shipgate` are **fully independent skills**. Turbo does NOT invoke shipgate at
-end-of-run. Turbo's human gate is the user reviewing the final merged diff / final report.
-The user runs `shipgate` separately, on demand, when they want the non-technical Change Card
-review. There is no `state/decision.json` coupling and no shipgate gate under `/loop`.
-
 ## Requirement: superpowers installed
 
 Turbo is a precondition-gated skill: it **requires superpowers installed** (it overrides and

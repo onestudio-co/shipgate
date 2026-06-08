@@ -1,7 +1,7 @@
 {
   "name": "shipgate",
-  "version": "0.4.0",
-  "description": "Non-technical change review: turns end-of-cycle agent changes into plain-language Change Cards a founder/PM/designer reviews in a browser, round-tripping the decision back to Claude. Bundles /turbo, a separate autonomous parallel work cycle.",
+  "version": "0.5.0",
+  "description": "Two autonomous, parallel, worktree-isolated work cycles for Claude Code: /turbo (generic, stateless) and /kaizen (self-improving — playbooks, per-agent memory, mandatory self-editing retro; scaffolds an editable copy into the project on first run).",
   "author": {
     "name": "OneStudio"
   }
