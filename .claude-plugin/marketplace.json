@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Studio Shipgate — two autonomous, parallel, worktree-isolated work cycles for Claude Code: /turbo (generic) and /kaizen (self-improving; scaffolds into the project).",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "plugins": [
     {
