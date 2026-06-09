@@ -8,6 +8,48 @@ Newest version first.
 
 ---
 
+## [0.8.1] — 2026-06-09 · harvest hardening + idempotency
+
+Follow-up fixes on the `harvest` workflow shipped in 0.8.0. No new feature — this
+makes harvest safe to re-run and harder to attack. Found by review and a turbo pass.
+
+### Fixed
+- **Correct scaffold paths in docs.** README, `SKILL.md`, the harvest `README.md`, and
+  the playbook now point at the real `.claude/kaizen/harvest/…` paths (sources file,
+  `.cache/`, proposals) instead of template-relative ones.
+- **Router no longer over-matches "upstream".** The word `upstream` alone stopped
+  routing a brief to `harvest`; it now routes only when paired with `harvest`,
+  `learn`, or `sync`.
+
+### Changed
+- **Deterministic dedup IDs.** The harvester now derives each candidate `id` as a
+  kebab-case slug of `source_ref` + the first words of `idea` — no random UUIDs — so
+  the `source+source_ref+id` dedup key is stable across re-runs.
+- **`learnings` defined and required.** The harvester spec now explains that
+  `learnings` are meta-observations about the harvest run (distinct from candidates)
+  and asks for at least one per source, so the sensei's channel measurement works.
+- **PREPARE clarified.** `SKILL.md` notes that `harvest` runs a different PREPARE
+  (source fetches + scout fan-out + ledger dedup; no spec, no DAG) from the default.
+
+### Safety
+- **Injection defense-in-depth.** Candidates with `injection_flag: true` are now hard-
+  rejected before scoring (mechanical, cannot be overridden by a high value score).
+  The harvester also rephrases `idea`/`vb_value` in its own words to drop any
+  imperative phrasing carried from source files.
+- **Engine files are never auto-applied.** Changes to `engine/workflow-script.md` and
+  `engine/plan-format.md` are always treated as STRUCTURAL (proposal-only), regardless
+  of risk label.
+
+### Added
+- Design spec + file-ownership DAG plan for the harvest workflow, under
+  `docs/superpowers/`.
+
+_Files: 7 changed, +195 / −11._
+
+[0.8.1]: https://github.com/onestudio-co/shipgate/compare/v0.8.0...v0.8.1
+
+---
+
 ## [0.8.0] — 2026-06-09 · kaizen learns from leading plugins (`harvest`)
 
 A new `harvest` workflow turns kaizen into a self-improving consumer of other plugins:
@@ -208,6 +250,8 @@ Replaced the v0.1 forked UI with a purpose-built reviewer.
 
 _Files: 27 changed, +3099. (This surface was fully removed in 0.5.0.)_
 
+[0.8.0]: https://github.com/onestudio-co/shipgate/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/onestudio-co/shipgate/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/onestudio-co/shipgate/releases/tag/v0.6.0
 [0.5.0]: https://github.com/onestudio-co/shipgate/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/onestudio-co/shipgate/compare/v0.3.1...v0.4.0

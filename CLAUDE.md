@@ -3,6 +3,22 @@
 Studio Shipgate is a Claude Code **plugin**. It ships two autonomous work cycles:
 `/turbo` (generic, stateless) and `/kaizen` (self-improving; scaffolds into the repo).
 
+## Always bump the plugin version on a release (mandatory — never skip)
+
+A release is NEVER shipped at the same version as the last one. Whenever you commit a
+release — any new feature, fix, or doc set meant to be published — you MUST raise the
+`version` field. This is automatic; do not wait to be asked.
+
+- Bump `version` in BOTH `.claude-plugin/plugin.json` and
+  `.claude-plugin/marketplace.json` to the same new number.
+- Use semantic versioning: patch for fixes/docs, minor for new features, major for
+  breaking changes.
+- The two manifest files, `CHANGELOG.md`, and the README "Latest — vX.Y.Z" callout
+  must all agree on the same number before you commit.
+- If asked to "commit and release" while the version is unchanged from the last
+  release, treat bumping the version as part of the task — do not ship a release on a
+  stale version.
+
 ## Release documentation process (run on EVERY version bump — do not wait to be asked)
 
 Whenever a release is cut — i.e. the `version` field changes in

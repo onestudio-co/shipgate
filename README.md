@@ -18,11 +18,13 @@ merged branch. Both always run in a git worktree; you review the final diff.
 > **Note:** earlier versions of this plugin were a non-technical "Change Card" review
 > surface. That feature has been removed — this plugin is now turbo + kaizen only.
 
-**Latest — v0.8.0:** kaizen gains a **`harvest`** workflow — `/kaizen harvest` mines the
-recent changes of registered leading plugins (gstack, superpowers, and any you add via
-`.claude/kaizen/harvest/sources.md`), extracts learnings judged by a venture-building-team value lens,
-auto-applies the safe ones and proposes the rest, and writes an upstream backport brief.
-See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+**Latest — v0.8.1:** hardening for the **`harvest`** workflow from 0.8.0 — it is now
+safe to re-run (deterministic dedup IDs), harder to attack (injection-flagged
+candidates are hard-rejected before scoring; engine files are never auto-applied), and
+the docs point at the real `.claude/kaizen/harvest/…` paths. `/kaizen harvest` still
+mines the recent changes of registered leading plugins (gstack, superpowers, and any
+you add via `.claude/kaizen/harvest/sources.md`), judged by a venture-building-team
+value lens. See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
