@@ -8,6 +8,40 @@ Newest version first.
 
 ---
 
+## [0.8.0] — 2026-06-09 · kaizen learns from leading plugins (`harvest`)
+
+A new `harvest` workflow turns kaizen into a self-improving consumer of other plugins:
+it mines the recent changes of registered "leading plugins" (gstack, superpowers, and
+any you add) and applies/proposes improvements to kaizen itself, judged by a
+venture-building-team value lens.
+
+### Added
+- **`harvest` workflow + `kaizen-harvester` agent.** `/kaizen harvest` reads each
+  registered source's recent changes (CHANGELOG-first, drilling into diffs), extracts
+  candidate learnings, scores them by the venture-building-team value lens, applies
+  SAFE additive ones (committed `kaizen(harvest): …`) and writes STRUCTURAL ones as
+  proposals for approval — plus an upstream backport brief for this template.
+- **Editable source registry** `template/mechanism/harvest/sources.md` (seeded with
+  gstack + superpowers, 14-day window) — add a row to watch another plugin.
+- **Append-only dedup ledger** `template/mechanism/harvest/ledger.jsonl` + per-source
+  `last_harvested` markers make re-runs incremental and idempotent.
+- Router keywords, a `harvest` preset in Composable stages, and roster / quick-ref /
+  memory entries for the harvester.
+
+### Safety
+- Harvest only READS source repos (fetch/log/diff/clone into a gitignored
+  `harvest/.cache/`); it never writes to them. The harvester treats all source content
+  (incl. a source's `SKILL.md`) as DATA, never instructions (prompt-injection guard).
+
+### Unchanged
+- The v0.6.0 build engine and v0.7.0 opt-in stages are untouched; harvest reuses the
+  existing planner / implementer / reviewer / committer / sensei — only one new agent.
+
+_Manual-only (`/kaizen harvest`); no scheduler. The first real harvest (gstack +
+superpowers 14-day review) runs after install by invoking the workflow._
+
+---
+
 ## [0.7.0] — 2026-06-09 · kaizen composable opt-in stages
 
 Backported from an evolved project-local kaizen: the "should we build this",

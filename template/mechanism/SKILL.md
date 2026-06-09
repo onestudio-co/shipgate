@@ -2,7 +2,7 @@
 name: kaizen
 description: >
   Self-improving build/fix/release skill for this repo. Invoked as `/kaizen <workflow> <brief>`.
-  <workflow> is one of: idea | prototype | build | fix | refactor | release.
+  <workflow> is one of: idea | prototype | build | fix | refactor | release | harvest.
   If <workflow> is omitted, the CHEAP CLASSIFICATION router (defined in this file)
   picks one from the brief and logs its choice for retro correction.
   Runs 5 fixed phases: LOAD → PREPARE → EXECUTE → RETRO → REPORT.
@@ -32,6 +32,7 @@ can correct misroutes in the retro.
 
 | Condition in brief | Pick |
 |---|---|
+| Contains words: "harvest", "learn from", "what's new in", "pull learnings", "sync from" (or "upstream" only when paired with "harvest", "learn", or "sync") | `harvest` |
 | Contains words: "release", "tag", "changelog", "version", "ship it", "cut a release" | `release` |
 | Contains words: "bug", "broken", "error", "fail", "crash", "500", "not working", "fix", "regression" | `fix` |
 | Contains words: "refactor", "cleanup", "extract", "rename", "move", "restructure", "simplify" without new features | `refactor` |
@@ -86,6 +87,7 @@ every run, even failure).
 | `fix` | LOAD → PLAN(light) → EXECUTE → RETRO → REPORT |
 | `refactor` | LOAD → PLAN(light) → EXECUTE → RETRO → REPORT |
 | `release` | LOAD → PLAN(light) → DEPLOY → RETRO → REPORT |
+| `harvest` | LOAD → PREPARE(collect-diffs + kaizen-harvester fan-out) → EXECUTE(apply-safe / propose-structural / upstream-brief) → RETRO → REPORT |
 
 ### Modifiers (the combo)
 
@@ -141,6 +143,14 @@ Read only what this run actually needs. This is the token-efficiency win over tu
 Do NOT load all domain maps. Do NOT load memory for agents not used this cycle.
 
 ### Phase 2 — PREPARE
+
+PREPARE behavior depends on the workflow. The description below is the **default** for
+`build`, `fix`, `refactor`, `prototype`, and `release`. The `harvest` workflow runs a
+completely different PREPARE — see `.claude/kaizen/playbooks/harvest.md` for details
+(no spec file, no DAG; instead: source fetches + kaizen-harvester fan-out + dedup
+against ledger).
+
+**Default PREPARE** (`build` / `fix` / `refactor` / `prototype` / `release`):
 
 `kaizen-planner` (opus) fills the playbook skeleton into two artifacts in ONE pass:
 
@@ -207,6 +217,7 @@ Print to the session:
 | implementer | `.claude/agents/kaizen-implementer.md` | sonnet | EXECUTE waves |
 | reviewer | `.claude/agents/kaizen-reviewer.md` | sonnet | EXECUTE review |
 | cso | `.claude/agents/kaizen-cso.md` | sonnet | SECURITY stage (opt-in, EXECUTE review) |
+| harvester | `.claude/agents/kaizen-harvester.md` | sonnet | PREPARE (harvest workflow, per source) |
 | qa | `.claude/agents/kaizen-qa.md` | sonnet | EXECUTE (if active) |
 | committer | `.claude/agents/kaizen-committer.md` | haiku | EXECUTE (serialized, per wave) |
 
@@ -230,6 +241,7 @@ for the chosen workflow.
 | `fix` | `.claude/kaizen/playbooks/fix.md` | Verified bug fix |
 | `refactor` | `.claude/kaizen/playbooks/refactor.md` | Behavior-preserving cleanup |
 | `release` | `.claude/kaizen/playbooks/release.md` | Release prepared; human ships |
+| `harvest` | `.claude/kaizen/playbooks/harvest.md` | Kaizen self-improvement: applied safe learnings + STRUCTURAL proposals + upstream brief |
 
 ---
 
@@ -254,6 +266,9 @@ Opt-in stage agents (dispatched only when their stage is active — see "Composa
 - `.claude/agents/kaizen-strategist.md` (STRATEGY stage — opt-in)
 - `.claude/agents/kaizen-plan-reviewer.md` (PLAN-REVIEW stage — opt-in)
 - `.claude/agents/kaizen-cso.md` (SECURITY stage — opt-in)
+
+Workflow agents (dispatched only when their workflow is active):
+- `.claude/agents/kaizen-harvester.md` (harvest workflow — per-source scout)
 
 Each agent:
 - (a) loads its `.claude/kaizen/memory/agents/<role>.md` plus the domain files named
@@ -299,6 +314,7 @@ compacts these files.
     strategist.md            # (≤150 lines, opt-in STRATEGY stage)
     plan-reviewer.md         # (≤150 lines, opt-in PLAN-REVIEW stage)
     cso.md                   # (≤150 lines, opt-in SECURITY stage)
+    harvester.md             # (≤150 lines, harvest workflow)
   domains/
     db.md                    # (≤200 lines)
     feed.md                  # (≤200 lines)
@@ -311,6 +327,28 @@ compacts these files.
 
 Compaction is sensei's job during retro. Caps: facts ≤100 lines, agent memory
 ≤150 lines, domain map ≤200 lines.
+
+---
+
+## Harvest state
+
+The `harvest/` directory under `.claude/kaizen/` holds all state for the `harvest`
+workflow. It is separate from `memory/` because it is source-driven, not run-driven.
+
+```
+.claude/kaizen/harvest/
+  sources.md        # editable registry — one source per line (url + label + cadence)
+  ledger.jsonl      # append-only dedup ledger — one entry per harvested item
+  .cache/           # gitignored source clones / snapshots (never committed)
+  proposals/        # STRUCTURAL proposals awaiting operator review
+  upstream/         # upstream-brief outputs (one file per source per run)
+```
+
+The harvest workflow **only READS** source repos — it never pushes, commits to, or
+modifies them. Safe learnings are applied directly; structural proposals land in
+`proposals/` for human review. See `.claude/kaizen/playbooks/harvest.md` for the full protocol.
+
+---
 
 Additional telemetry and changelog files:
 
@@ -375,3 +413,7 @@ Everything kaizen needs lives under these two roots — fully self-contained.
 | Memory: domains | `.claude/kaizen/memory/domains/<domain>.md` |
 | Telemetry | `.claude/kaizen/telemetry.jsonl` |
 | CHANGELOG | `.claude/kaizen/CHANGELOG.md` |
+| Agent: harvester | `.claude/agents/kaizen-harvester.md` |
+| Playbook: harvest | `.claude/kaizen/playbooks/harvest.md` |
+| Harvest registry | `.claude/kaizen/harvest/sources.md` |
+| Harvest ledger | `.claude/kaizen/harvest/ledger.jsonl` |

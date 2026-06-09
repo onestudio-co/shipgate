@@ -1,0 +1,2 @@
+# kaizen harvest ledger — append-only. One JSON object per line. Never edit or delete existing lines.
+# schema: {"ts":ISO8601,"source":str,"source_ref":str,"id":str,"idea":str,"verdict":"applied"|"proposed"|"rejected","target_file":str,"run_id":str}
