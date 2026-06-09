@@ -13,8 +13,8 @@ manually on Mohammed's machine. The agent never runs the deploy command.
 | Phase | What happens |
 |---|---|
 | LOAD | Read this playbook + `.claude/kaizen/memory/facts.md` |
-| PREPARE | Planner collects commits since last tag; drafts changelog entry and version bump |
-| EXECUTE | Implementer writes CHANGELOG, bumps version in `package.json`, creates git tag |
+| PREPARE | Planner reads the **real diffs** since last tag (`git diff --stat <last-tag>..HEAD` + inspect changes, not just commit subjects); drafts changelog entry, README refresh, and version bump |
+| EXECUTE | Implementer writes CHANGELOG, refreshes README, bumps version in `package.json`, creates git tag |
 | RETRO | Sensei records the release in `.claude/kaizen/CHANGELOG.md` |
 | REPORT | Print the tag name, the changelog diff, and the deploy command for the human |
 
@@ -63,10 +63,19 @@ No further automation. No deploy. No preview. Stop.
 Release is always a single wave:
 
 ```
-wave 0: [update CHANGELOG.md, bump version in package.json]
+wave 0: [update CHANGELOG.md, refresh README.md, bump version in package.json]
 ```
 
-Then the committer commits both files in one commit:
+**Changelog must be diff-grounded.** Build each entry from the actual file
+changes (`git diff --stat <last-tag>..HEAD` and inspect the diffs), grouped into
+Added / Changed / Fixed / Removed by what the code does — not by copying commit
+subjects. Add a `_Files: N changed, +X / −Y._` footer from the diff stat.
+
+**README must be refreshed.** Update any "Latest" / "What's new" callout and the
+feature claims so they match the new release. This happens on every version bump
+without the user asking.
+
+Then the committer commits all files in one commit:
 `release: v<version> — <one-line summary>`
 
 Then the committer creates the tag:
@@ -141,7 +150,8 @@ Bump type: major | minor | patch — reason: <why>
 
 ## Files to change
 
-- `CHANGELOG.md` — prepend changelog entry above.
+- `CHANGELOG.md` — prepend the diff-grounded changelog entry above.
+- `README.md` — refresh the "Latest" callout and feature claims for this release.
 - `package.json` — bump `"version"` field to `<version>`.
 
 ## Gates (must pass before tagging)

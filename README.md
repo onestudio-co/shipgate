@@ -18,6 +18,12 @@ merged branch. Both always run in a git worktree; you review the final diff.
 > **Note:** earlier versions of this plugin were a non-technical "Change Card" review
 > surface. That feature has been removed — this plugin is now turbo + kaizen only.
 
+**Latest — v0.6.0:** the kaizen build path now groups implementers by a
+file-ownership DAG and runs them as a **dependency pipeline**, and the adversarial
+review pass is **capped and scoped** to keep cost down on large diffs. Planning gets
+a **template-plan fast path** for repeated patterns. See [CHANGELOG.md](CHANGELOG.md)
+for the full version history.
+
 ---
 
 ## Install
@@ -68,6 +74,13 @@ template/mechanism/      # the kaizen skill + engine + playbooks (copied to .cla
 template/agents/         # the 7 role agents (copied to .claude/agents/)
 template/memory-seed/    # empty memory store for a fresh repo
 ```
+
+---
+
+## Version history
+
+Every release is recorded in [CHANGELOG.md](CHANGELOG.md), grounded in the real git
+diffs between versions.
 
 ---
 
