@@ -164,6 +164,12 @@ Gather evidence BEFORE forming a fix hypothesis:
   "Failed query" message misleads toward SQL syntax. Evidence: c7-ops-500-digest.
 - Map the stack to a specific code line.
 - Write a reproduction note: "Confirmed: [evidence]."
+- **Scope a multi-ask report against EXISTING code FIRST.** A bug/feature report
+  with N asks is often already partly shipped — grep for each ask before planning
+  any build, and POINT the reporter to what exists instead of rebuilding it.
+  Evidence: a report looked like 4 asks; 2 were already live — only 2 were real
+  bugs. Reading the code before planning saved building duplicates (reinforces
+  "read before assuming").
 
 Do not write code yet.
 
@@ -177,6 +183,12 @@ Only proceed to fix when evidence collapses the hypothesis to ONE cause.
 
 **Step 4 — Fix.**
 Keep changes **minimal** — within the blast radius of the confirmed cause.
+
+**Scope lock (the kaizen `freeze`).** Before editing, declare the confirmed-cause file(s) as
+the allowed write set. The planner sets `files_write` to ONLY those files; any write outside
+the set is scope-drift and is rejected by the reviewer's scope dimension + delivery audit.
+This is kaizen's lean equivalent of gstack `/freeze` — a fix touches the bug, not "while I
+was in there" refactors. Widen the set only with explicit evidence the cause spans more files.
 
 - Touch only the files needed.
 - In `'use server'` files: every export must be async (caught by `pnpm build`, not tsc).

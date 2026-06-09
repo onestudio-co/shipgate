@@ -32,7 +32,7 @@ if [ ! -f .claude/kaizen/SKILL.md ]; then
   echo "[kaizen] scaffolded mechanism -> .claude/kaizen/"
 fi
 
-# 2. Agents (7 kaizen-*.md, registered per-project) -> .claude/agents/ [only if absent]
+# 2. Agents (the kaizen-*.md set, registered per-project) -> .claude/agents/ [only if absent]
 #    (find, not a bare glob — portable across bash/zsh, no "no matches" noise)
 if [ -z "$(find .claude/agents -maxdepth 1 -name 'kaizen-*.md' 2>/dev/null)" ]; then
   mkdir -p .claude/agents

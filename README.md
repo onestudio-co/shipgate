@@ -18,11 +18,11 @@ merged branch. Both always run in a git worktree; you review the final diff.
 > **Note:** earlier versions of this plugin were a non-technical "Change Card" review
 > surface. That feature has been removed — this plugin is now turbo + kaizen only.
 
-**Latest — v0.6.0:** the kaizen build path now groups implementers by a
-file-ownership DAG and runs them as a **dependency pipeline**, and the adversarial
-review pass is **capped and scoped** to keep cost down on large diffs. Planning gets
-a **template-plan fast path** for repeated patterns. See [CHANGELOG.md](CHANGELOG.md)
-for the full version history.
+**Latest — v0.7.0:** kaizen gains **composable opt-in stages** — `+strategy`
+(an office-hours "should we build this" front-end), `+review` (a plan-review gate
+before EXECUTE), and `+security` (a CSO/OWASP+STRIDE lens on the diff) — each backed
+by a new opt-in agent. A workflow is now a named preset of stages you compose with
+`+x`/`-x`. See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 

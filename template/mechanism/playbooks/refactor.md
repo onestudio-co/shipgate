@@ -25,8 +25,8 @@ No new features, no bug fixes, no schema changes — pure structural improvement
 | Lint? | Not configured — no eslint gate. |
 | Gates (before)? | `./node_modules/.bin/tsc --noEmit` + `pnpm build` must pass BEFORE any code change. |
 | Gates (after)? | Same gates must pass AFTER every wave. If they fail after, revert the wave. |
-| Feature changes allowed? | No. Any feature change stops the refactor and starts a build ticket instead. |
-| DB schema changes allowed? | No. Schema changes belong in a build ticket. |
+| Feature changes allowed? | No NEW features. But a coordinated REMOVAL (reverting a feature that does not fit) IS a refactor variant — see "Coordinated REMOVAL" below. |
+| DB schema changes allowed? | No additive schema changes. A removal may STRIP a column from schema+code, but the irreversible prod `DROP COLUMN` is deferred to the user. |
 | New `'use server'` exports allowed? | No new exports. Existing ones may be reorganized; all must remain async. |
 | Package manager? | pnpm only. |
 | tsc in worktree? | `./node_modules/.bin/tsc --noEmit` — never `pnpm exec tsc`. |
@@ -70,6 +70,22 @@ wave 0: [simplify the target file(s)]
 (single wave if no cascading import changes)
 
 Gates run after every wave before the next wave starts.
+
+**Coordinated REMOVAL (feature / field deletion) — the exception to per-wave gates:**
+```
+single pass: [delete files + strip all cross-file references], THEN one final gate
+```
+A removal that spans many files (delete some, edit others to drop the removed
+symbol) must be done as ALL edits in ONE pass, then ONE `pnpm build` gate — NOT in
+waves. Per-wave `tsc`/`pnpm build` FAILS on a partially-removed feature: while wave 1
+has dropped a const/type/field but wave 2 still references it, the gate is red on
+cross-file dangling references that are only resolved once the WHOLE removal lands.
+So a coordinated removal runs INLINE on main (coordinator-authored), not through the
+multi-agent wave engine. Removal is a legitimate refactor variant — a feature being
+reverted because it does not fit ("re-spec later") is structural, not a new feature.
+The "no schema changes" rule still holds for the DROP itself: strip the column from
+the schema + code and ship that, but DEFER the irreversible prod `DROP COLUMN` to the
+user (deploy column-free code FIRST).
 
 ---
 

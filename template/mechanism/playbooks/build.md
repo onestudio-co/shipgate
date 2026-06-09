@@ -49,9 +49,13 @@ wave 1: [server action / API route, data lib]
 wave 2: [UI components, page wiring]
 ```
 
-**Large feature (>8 files):** split into two `/kaizen build` runs. First run
-delivers backend + data layer; second run delivers UI. Never exceed 4 tasks
-per wave (the width cap from `plan-format.md`).
+**Large feature (>8 files):** still ONE `/kaizen build` run — do NOT split into
+backend-now / UI-later runs. Use more waves (schema → data/actions → components →
+page wiring → admin/gating), each ≤4 tasks (the width cap from `plan-format.md`).
+Splitting strands half-done WIP on `main` and spreads one feature's context across
+sessions with no shippable value until both halves land — finish the whole feature
+in one cycle and submit once. Evidence: user directive after a run split a feature
+backend/UI and left the backend stranded.
 
 Gate run after wave N before wave N+1 is dispatched (worktree-safe, fast):
 `./node_modules/.bin/tsc --noEmit`

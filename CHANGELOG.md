@@ -8,6 +8,45 @@ Newest version first.
 
 ---
 
+## [0.7.0] — 2026-06-09 · kaizen composable opt-in stages
+
+Backported from an evolved project-local kaizen: the "should we build this",
+plan-review, and security ideas that grew in a downstream repo, generalized for the
+template. A workflow is now a named preset of **stages** composed with `+x`/`-x`.
+
+### Added
+- **Three opt-in stages + their agents.** `template/mechanism/SKILL.md` gains a
+  "Composable stages (split + combo)" section defining stage atoms, presets, and
+  `+x`/`-x` modifiers, plus three new agents in `template/agents/`:
+  - `kaizen-strategist.md` (opus) — `STRATEGY` stage (`+strategy`, default in `idea`):
+    a lean office-hours front-end that returns build / reshape / don't-build before
+    planning. Adapted from gstack `office-hours`.
+  - `kaizen-plan-reviewer.md` (opus) — `PLAN-REVIEW` stage (`+review`): pressure-tests
+    the spec + DAG with 6 decision principles + a premise challenge before EXECUTE.
+    Adapted from gstack `autoplan` + `plan-ceo-review`.
+  - `kaizen-cso.md` (sonnet) — `SECURITY` stage (`+security`): an OWASP + STRIDE +
+    secrets/supply-chain/LLM/SKILL.md lens on the diff inside EXECUTE review.
+    Adapted from gstack `cso`.
+- Role-roster, agent list, memory layout, and quick-reference index updated for the
+  three new opt-in agents.
+
+### Changed
+- **`build` playbook: large features stay ONE run.** Reversed the previous
+  "split into two runs (backend then UI)" guidance — splitting strands half-done WIP
+  on `main`; use more waves in a single cycle instead.
+- **`fix` playbook:** added "scope a multi-ask report against existing code first"
+  (grep before building duplicates) and a "scope lock" (the kaizen `freeze` — declare
+  the allowed write set up front).
+- **`refactor` playbook:** added the **Coordinated REMOVAL** variant — a feature/field
+  deletion runs as one inline pass + one final gate (not per-wave), and the
+  irreversible prod `DROP COLUMN` is deferred to the user.
+
+_The newer v0.6.0 build engine (dependency-pipeline build, capped/scoped review,
+template-plan fast path) is untouched — this release only adds the opt-in stages and
+playbook learnings._
+
+---
+
 ## [0.6.0] — 2026-06-08 · kaizen build v2
 
 The kaizen engine learns to build faster and review cheaper.

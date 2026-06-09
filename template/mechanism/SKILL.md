@@ -53,6 +53,73 @@ detect misroutes and refine these heuristics.
 
 ---
 
+## Composable stages (split + combo)
+
+A workflow is just a **named preset of stages**. Stages are the atoms; the `+x`/`-x`
+modifiers let the user compose a run without inventing a new workflow. This keeps the
+lean default cheap while making heavier capabilities **opt-in**.
+
+### Stage atoms
+
+| Stage | Maps to phase | Default | What it does |
+|---|---|---|---|
+| `LOAD` | LOAD | always | read playbook + facts + needed domain maps |
+| `STRATEGY` | start of PREPARE | opt-in | the "should we build this" brain — office-hours forcing questions before planning |
+| `PLAN` | PREPARE | core | planner writes spec + DAG plan |
+| `PLAN-REVIEW` | end of PREPARE | opt-in | gate the spec before EXECUTE (6 decision principles + premise challenge) |
+| `EXECUTE` | EXECUTE | core | waves of implementers → committer → adversarial code review |
+| `SECURITY` | inside EXECUTE review | opt-in | CSO lens (OWASP/STRIDE/secrets/SKILL.md) on the diff |
+| `DEPLOY` | end of EXECUTE | opt-in | run the project's production deploy command after gates are green |
+| `RETRO` | RETRO | **mandatory** | sensei — never removable |
+| `REPORT` | REPORT | always | print outcome + telemetry |
+
+`LOAD`, `RETRO`, `REPORT` are non-removable. `RETRO` is an INVARIANT (mandatory after
+every run, even failure).
+
+### Workflow presets (the split)
+
+| Workflow | Composition |
+|---|---|
+| `idea` | LOAD → STRATEGY → PLAN(spec-only) → RETRO → REPORT |
+| `prototype` | LOAD → PLAN → EXECUTE(prototype) → RETRO → REPORT |
+| `build` | LOAD → PLAN → EXECUTE → RETRO → REPORT |
+| `fix` | LOAD → PLAN(light) → EXECUTE → RETRO → REPORT |
+| `refactor` | LOAD → PLAN(light) → EXECUTE → RETRO → REPORT |
+| `release` | LOAD → PLAN(light) → DEPLOY → RETRO → REPORT |
+
+### Modifiers (the combo)
+
+Append `+stage` to add, `-stage` to drop, after the workflow:
+
+- `+strategy` · `+review` · `+security` · `+ship` (=DEPLOY) · `-review` · `-strategy`
+- `/kaizen build +strategy +review` → LOAD → STRATEGY → PLAN → PLAN-REVIEW → EXECUTE → RETRO → REPORT
+- `/kaizen build +ship` → … EXECUTE → DEPLOY → RETRO …
+- `/kaizen fix +security +ship` → … EXECUTE → SECURITY → DEPLOY → RETRO …
+
+### Resolution + logging
+
+The router first strips `+x`/`-x` tokens (they never affect keyword classification),
+picks the workflow, applies the preset, then adds/removes the modified stages. It logs:
+
+```
+[kaizen stages] <workflow> <modifiers> → STAGE→STAGE→…
+```
+
+An opt-in stage with no implementation yet (see `.claude/kaizen/gstack-merge-roadmap.md`
+when present) is a **no-op that logs "stage X not yet implemented"** — never a hard error.
+This lets the grammar ship before every stage is built.
+
+### Stage implementations
+
+| Stage | Status | How it runs |
+|---|---|---|
+| `STRATEGY` | ✅ implemented | dispatch `kaizen-strategist` (opus) before PLAN; on a `dont-build` verdict, STOP + report (still run RETRO); else feed `sharpened_problem` + `wedge` to the planner |
+| `PLAN-REVIEW` | ✅ implemented | dispatch `kaizen-plan-reviewer` (opus) after PLAN; 6 principles + premise challenge; appends review + decision audit to the spec; `pass`→EXECUTE, `hold`→ask user, `revise`→back to planner |
+| `SECURITY` | ✅ implemented | dispatch `kaizen-cso` (sonnet) in EXECUTE review; OWASP/STRIDE + secrets/supply-chain/LLM/SKILL.md on the diff; verified findings → fix wave, unverified → user |
+| `DEPLOY` | opt-in | after merge to main + gates green on the MAIN checkout, run the project's production deploy command, wait for ready, smoke the changed routes. If schema changed, apply the migration BEFORE deploy. Without `+ship`, kaizen only PRINTS the command — never auto-deploys |
+
+---
+
 ## 5 Fixed Phases
 
 Every kaizen run — regardless of workflow — follows these five phases in order.
@@ -133,10 +200,13 @@ Print to the session:
 | Role | Agent file | Model | Dispatched in |
 |---|---|---|---|
 | planner | `.claude/agents/kaizen-planner.md` | opus | PREPARE |
+| strategist | `.claude/agents/kaizen-strategist.md` | opus | STRATEGY stage (opt-in, before PREPARE) |
 | interviewer | `.claude/agents/kaizen-interviewer.md` | opus | PREPARE (fallback) |
+| plan-reviewer | `.claude/agents/kaizen-plan-reviewer.md` | opus | PLAN-REVIEW stage (opt-in, end of PREPARE) |
 | sensei | `.claude/agents/kaizen-sensei.md` | opus | RETRO |
 | implementer | `.claude/agents/kaizen-implementer.md` | sonnet | EXECUTE waves |
 | reviewer | `.claude/agents/kaizen-reviewer.md` | sonnet | EXECUTE review |
+| cso | `.claude/agents/kaizen-cso.md` | sonnet | SECURITY stage (opt-in, EXECUTE review) |
 | qa | `.claude/agents/kaizen-qa.md` | sonnet | EXECUTE (if active) |
 | committer | `.claude/agents/kaizen-committer.md` | haiku | EXECUTE (serialized, per wave) |
 
@@ -163,15 +233,15 @@ for the chosen workflow.
 
 ---
 
-## Seven agents
+## Agents
 
-All seven agents live under `.claude/agents/kaizen-*.md`. Each file is a prompt
+All agents live under `.claude/agents/kaizen-*.md`. Each file is a prompt
 body. The engine inlines each body as the prompt string into
 `agent(prompt, { model, schema })`. The result schemas (with `learnings: string[]`
 fields) are defined in
 `.claude/kaizen/engine/workflow-script.md`.
 
-Agent files:
+Core agents (always available):
 - `.claude/agents/kaizen-planner.md`
 - `.claude/agents/kaizen-implementer.md`
 - `.claude/agents/kaizen-committer.md`
@@ -179,6 +249,11 @@ Agent files:
 - `.claude/agents/kaizen-qa.md`
 - `.claude/agents/kaizen-interviewer.md`
 - `.claude/agents/kaizen-sensei.md`
+
+Opt-in stage agents (dispatched only when their stage is active — see "Composable stages"):
+- `.claude/agents/kaizen-strategist.md` (STRATEGY stage — opt-in)
+- `.claude/agents/kaizen-plan-reviewer.md` (PLAN-REVIEW stage — opt-in)
+- `.claude/agents/kaizen-cso.md` (SECURITY stage — opt-in)
 
 Each agent:
 - (a) loads its `.claude/kaizen/memory/agents/<role>.md` plus the domain files named
@@ -221,6 +296,9 @@ compacts these files.
     qa.md                    # (≤150 lines)
     interviewer.md           # (≤150 lines)
     sensei.md                # (≤150 lines)
+    strategist.md            # (≤150 lines, opt-in STRATEGY stage)
+    plan-reviewer.md         # (≤150 lines, opt-in PLAN-REVIEW stage)
+    cso.md                   # (≤150 lines, opt-in SECURITY stage)
   domains/
     db.md                    # (≤200 lines)
     feed.md                  # (≤200 lines)
@@ -283,11 +361,14 @@ Everything kaizen needs lives under these two roots — fully self-contained.
 | Playbook: refactor | `.claude/kaizen/playbooks/refactor.md` |
 | Playbook: release | `.claude/kaizen/playbooks/release.md` |
 | Agent: planner | `.claude/agents/kaizen-planner.md` |
+| Agent: strategist (opt-in) | `.claude/agents/kaizen-strategist.md` |
 | Agent: implementer | `.claude/agents/kaizen-implementer.md` |
 | Agent: committer | `.claude/agents/kaizen-committer.md` |
 | Agent: reviewer | `.claude/agents/kaizen-reviewer.md` |
+| Agent: cso (opt-in) | `.claude/agents/kaizen-cso.md` |
 | Agent: qa | `.claude/agents/kaizen-qa.md` |
 | Agent: interviewer | `.claude/agents/kaizen-interviewer.md` |
+| Agent: plan-reviewer (opt-in) | `.claude/agents/kaizen-plan-reviewer.md` |
 | Agent: sensei | `.claude/agents/kaizen-sensei.md` |
 | Memory: facts | `.claude/kaizen/memory/facts.md` |
 | Memory: agents | `.claude/kaizen/memory/agents/<role>.md` |
