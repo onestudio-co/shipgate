@@ -10,7 +10,7 @@ in how much they remember and tune themselves.
 | Command | What it does |
 |---|---|
 | `/turbo <task>` | Generic autonomous cycle. Stateless and stable — nothing to set up, nothing it changes about itself. Best for one-off "just build/fix this fast" work. |
-| `/kaizen <workflow> <brief>` | **Self-improving** cycle. Adds playbooks, per-agent memory + domain maps, and a mandatory retro that edits its own files so it gets sharper every run. `<workflow>` = idea · prototype · build · fix · refactor · release (omit it and a cheap router picks one). |
+| `/kaizen <workflow> <brief>` | **Self-improving** cycle. Adds playbooks, per-agent memory + domain maps, and a mandatory retro that edits its own files so it gets sharper every run. `<workflow>` = idea · prototype · build · fix · refactor · release · harvest (omit it and a cheap router picks one). |
 
 Each iteration of either runs as one dynamic `Workflow` and ends with a report on a
 merged branch. Both always run in a git worktree; you review the final diff.
@@ -20,7 +20,7 @@ merged branch. Both always run in a git worktree; you review the final diff.
 
 **Latest — v0.8.0:** kaizen gains a **`harvest`** workflow — `/kaizen harvest` mines the
 recent changes of registered leading plugins (gstack, superpowers, and any you add via
-`harvest/sources.md`), extracts learnings judged by a venture-building-team value lens,
+`.claude/kaizen/harvest/sources.md`), extracts learnings judged by a venture-building-team value lens,
 auto-applies the safe ones and proposes the rest, and writes an upstream backport brief.
 See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 

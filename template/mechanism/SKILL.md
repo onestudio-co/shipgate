@@ -32,7 +32,7 @@ can correct misroutes in the retro.
 
 | Condition in brief | Pick |
 |---|---|
-| Contains words: "harvest", "learn from", "what's new in", "pull learnings", "upstream", "sync from" | `harvest` |
+| Contains words: "harvest", "learn from", "what's new in", "pull learnings", "sync from" (or "upstream" only when paired with "harvest", "learn", or "sync") | `harvest` |
 | Contains words: "release", "tag", "changelog", "version", "ship it", "cut a release" | `release` |
 | Contains words: "bug", "broken", "error", "fail", "crash", "500", "not working", "fix", "regression" | `fix` |
 | Contains words: "refactor", "cleanup", "extract", "rename", "move", "restructure", "simplify" without new features | `refactor` |
@@ -143,6 +143,14 @@ Read only what this run actually needs. This is the token-efficiency win over tu
 Do NOT load all domain maps. Do NOT load memory for agents not used this cycle.
 
 ### Phase 2 — PREPARE
+
+PREPARE behavior depends on the workflow. The description below is the **default** for
+`build`, `fix`, `refactor`, `prototype`, and `release`. The `harvest` workflow runs a
+completely different PREPARE — see `.claude/kaizen/playbooks/harvest.md` for details
+(no spec file, no DAG; instead: source fetches + kaizen-harvester fan-out + dedup
+against ledger).
+
+**Default PREPARE** (`build` / `fix` / `refactor` / `prototype` / `release`):
 
 `kaizen-planner` (opus) fills the playbook skeleton into two artifacts in ONE pass:
 
@@ -338,7 +346,7 @@ workflow. It is separate from `memory/` because it is source-driven, not run-dri
 
 The harvest workflow **only READS** source repos — it never pushes, commits to, or
 modifies them. Safe learnings are applied directly; structural proposals land in
-`proposals/` for human review. See `playbooks/harvest.md` for the full protocol.
+`proposals/` for human review. See `.claude/kaizen/playbooks/harvest.md` for the full protocol.
 
 ---
 
