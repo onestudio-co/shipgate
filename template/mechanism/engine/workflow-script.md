@@ -156,16 +156,19 @@ declaration would be dropped at schema validation and the array would never reac
   `{ status: "done"|"done_with_concerns"|"blocked_browser_only"|"qa_gap", tests_written: string[], runner_output: string, learnings?: string[] }`
 
 - **REVIEW_FINDINGS**:
-  `{ findings: [{ id, dimension: "correctness"|"security"|"perf"|"scope", file, line, severity: "critical"|"major"|"minor", title, detail }], learnings?: string[] }`
+  `{ findings: [{ id, dimension: "correctness"|"security"|"perf"|"scope", file, line, severity: "critical"|"major"|"minor", title, detail }], delivery_audit?: { items: [{ deliverable: string, status: "done"|"partial"|"not_done"|"changed"|"unverifiable" }], scope_drift: string[], verdict: "complete"|"gaps"|"drift" }, learnings?: string[] }`
+  (the `scope` dimension reviewer also fills `delivery_audit` — did the diff build exactly the spec's deliverables? a `gaps`/`drift` verdict surfaces to the coordinator/user.)
 
 - **VERIFY_VERDICT**:
   `{ finding_id, is_real: boolean, reasoning: string }`
 
 - **PLANNER_RESULT**:
-  `{ spec_path: string, plan_path: string, waves: number, tasks: number, assumptions: string[], learnings?: string[] }`
+  `{ spec_path: string, plan_path: string, waves: number, tasks: number, assumptions: string[], spec_score: number, learnings?: string[] }`
+  (`spec_score` 0–10: the planner's self-graded "could an unfamiliar implementer execute this without guessing?" — <7 means revise once or ship with a visible warning; see kaizen-planner.md.)
 
 - **RETRO_RESULT** (dispatched by the coordinator in the RETRO phase, outside the Workflow):
-  `{ run_id: string, status: "done", memory_files_updated: string[], self_edits: number, broken_channels: string[], learnings_seen: number, assumptions_corrected: number, compaction_performed: string[], changelog_entry: string, commit_message: string, learnings?: string[] }`
+  `{ run_id: string, status: "done", retro_mode: "full"|"light", retro_reason: string, memory_files_updated: string[], self_edits: number, broken_channels: string[], learnings_seen: number, assumptions_corrected: number, compaction_performed: string[], metrics: { commits: number, files_changed: number, net_loc: number, tests_touched: boolean }, fix_ratio_alarm: boolean, changelog_entry: string|null, commit_message: string|null, learnings?: string[] }`
+  (a `light` retro returns `self_edits:0`, `changelog_entry:null`, `commit_message:null` — telemetry line only. See the value-triggered RETRO in SKILL.md Phase 4.)
 
 ## Learnings collection
 
@@ -262,14 +265,22 @@ const DIMENSIONS = ['correctness', 'security', 'scope']
 const reviewResults = (await parallel(DIMENSIONS.map((d) => () =>
   agent(reviewPrompt(d, worktree, baseBranch), { label: `review:${d}`, phase: 'Review', model: 'sonnet', schema: REVIEW_FINDINGS })
 ))).filter(Boolean)
-// DEDUP by file+title, then drop anything not on a file the plan actually produced
-// (kills scope-creep findings like "add a missing subsystem" before they reach a fixer).
-const seen = new Set()
-const inScope = reviewResults.flatMap((r) => r.findings || []).filter((f) => {
-  const k = `${f.file}::${(f.title || '').toLowerCase()}`
-  if (seen.has(k) || !inDeliverables(f.file)) return false
-  seen.add(k); return true
-})
+// DEDUP, then drop anything not on a file the plan actually produced (kills scope-creep
+// findings like "add a missing subsystem" before they reach a fixer). Key on file::LINE,
+// NOT file::title — a title key lets 3 dimension lenses file the SAME line under 3 titles
+// and waste 3 verify agents. Same file+line from two lenses = ONE finding (one edit fixes
+// both); keep the HIGHER severity so a `major` is never dropped for a `minor` on the same
+// line. Fall back to title when a finding has no line.
+const sevRank = { critical: 3, major: 2, minor: 1 }
+const sevOf = (f) => sevRank[(f.severity || '').toLowerCase()] || 0
+const byKey = new Map()
+for (const f of reviewResults.flatMap((r) => r.findings || [])) {
+  if (!inDeliverables(f.file)) continue
+  const k = f.line ? `${f.file}::${f.line}` : `${f.file}::${(f.title || '').toLowerCase()}`
+  const prev = byKey.get(k)
+  if (!prev || sevOf(f) > sevOf(prev)) byKey.set(k, f)
+}
+const inScope = [...byKey.values()]
 const major = inScope.filter((f) => ['critical', 'major'].includes((f.severity || '').toLowerCase()))
 const minor = inScope.filter((f) => !['critical', 'major'].includes((f.severity || '').toLowerCase()))
 // Verify ONLY critical/major; verifyPrompt instructs the agent to default is_real=false
@@ -316,6 +327,13 @@ Three helper contracts changed with the v2 review (exp 2026-06-08):
 - `triagePrompt(minorFindings, worktree, deliverableFiles)` — one batched agent that returns
   only the minor findings worth fixing (and only on `deliverableFiles`), replacing one
   verifier-per-finding.
+- `reviewPrompt(d, worktree, baseBranch)` — the `scope` dimension also fills `delivery_audit`
+  (did the diff build exactly the spec's deliverables?). **STALE-BASE guard:** if this
+  Workflow was suspended and another session moved/rebased `baseBranch`, a raw
+  `git diff baseBranch..HEAD` shows main-side commits the branch never touched as FALSE
+  deletions. Gate any deletion/"regression" finding on a branch-lineage check
+  (`git -C ${worktree} log baseBranch..HEAD --name-only` — the branch's OWN commits) before
+  trusting it; verify defaults `is_real=false` for unexplained drift.
 `committerPrompt({ n }, files, worktree)` stages exactly `files` — never `git add -A`.
 
 ## Kaizen memory loading at dispatch

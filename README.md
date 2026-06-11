@@ -10,7 +10,7 @@ in how much they remember and tune themselves.
 | Command | What it does |
 |---|---|
 | `/turbo <task>` | Generic autonomous cycle. Stateless and stable — nothing to set up, nothing it changes about itself. Best for one-off "just build/fix this fast" work. |
-| `/kaizen <workflow> <brief>` | **Self-improving** cycle. Adds playbooks, per-agent memory + domain maps, and a mandatory retro that edits its own files so it gets sharper every run. `<workflow>` = idea · prototype · build · fix · refactor · release · harvest (omit it and a cheap router picks one). |
+| `/kaizen <workflow> <brief>` | **Self-improving** cycle. Adds playbooks, per-agent memory + domain maps, and a **value-triggered** self-editing retro that sharpens its own files when a cycle earns it — smart, not rigid. `<workflow>` = idea · prototype · build · fix · refactor · release · harvest (omit it and a cheap router picks one). |
 
 Each iteration of either runs as one dynamic `Workflow` and ends with a report on a
 merged branch. Both always run in a git worktree; you review the final diff.
@@ -18,13 +18,16 @@ merged branch. Both always run in a git worktree; you review the final diff.
 > **Note:** earlier versions of this plugin were a non-technical "Change Card" review
 > surface. That feature has been removed — this plugin is now turbo + kaizen only.
 
-**Latest — v0.8.1:** hardening for the **`harvest`** workflow from 0.8.0 — it is now
-safe to re-run (deterministic dedup IDs), harder to attack (injection-flagged
-candidates are hard-rejected before scoring; engine files are never auto-applied), and
-the docs point at the real `.claude/kaizen/harvest/…` paths. `/kaizen harvest` still
-mines the recent changes of registered leading plugins (gstack, superpowers, and any
-you add via `.claude/kaizen/harvest/sources.md`), judged by a venture-building-team
-value lens. See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+**Latest — v0.9.0:** **Smart Retro** + learnings harvested from ~50 real `/kaizen` runs
+across three downstream projects. The retro is now **value-triggered**: it always assesses
+(one telemetry line per run) but only does the full self-editing pass when a cycle earns it
+— a failure, a new pattern, a recurring mistake, a misroute, or your feedback. A routine
+cycle gets a *light* retro (no forced edit, no commit); "nothing new" is a valid outcome.
+This release also adds reviewer semantic-dedup + a delivery audit, planner evidence-first
+scope-lock + an executability `spec_score`, sensei metrics + a fix-ratio alarm, two router
+rules, a stack-decoupled `build` playbook (for non-Next/non-web projects), and worktree
+execution-safety guards (main-hygiene + stale-base + inline/​hybrid execution). No breaking
+changes. See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ---
 
@@ -51,8 +54,9 @@ end (PR is opt-in via `--pr`). See `skills/turbo/SKILL.md`.
 ## `/kaizen` — self-improving cycle (scaffolds into your repo)
 
 Kaizen is turbo's engine plus three pillars: **playbooks**, **per-agent memory +
-domain maps**, and a **mandatory self-editing retro** (`kaizen-sensei`) that runs
-after every cycle — even on failure.
+domain maps**, and a **value-triggered self-editing retro** (`kaizen-sensei`) that runs
+after every cycle — even on failure — but only does the full self-edit when the cycle
+earns it (a routine cycle gets a light, telemetry-only retro). Smart, not rigid.
 
 Because kaizen rewrites its own playbooks, prompts, and memory, it can't run from the
 read-only plugin. So on the **first** `/kaizen` in a repo it **scaffolds an editable

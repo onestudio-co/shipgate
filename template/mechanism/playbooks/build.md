@@ -1,7 +1,12 @@
 # Playbook — build
 
-Standard feature implementation flow for this repo (Next.js, pnpm, Neon/Drizzle).
-Produces committed, gate-passing code on a worktree branch.
+Standard feature implementation flow. Produces committed, gate-passing code on a worktree
+branch. The generic skeleton (LOAD → PREPARE → waves → type-check-per-wave → review) is
+**stack-neutral**. The "Cached answers" below describe a REFERENCE stack (Next.js / pnpm /
+Neon-Drizzle / Vercel); **your project's `facts.md` is the source of truth and OVERRIDES any
+row that does not fit.** A non-Next / non-pnpm / non-web project (Vite, Python, Rust, mobile,
+research/content) keeps the skeleton and substitutes its own gates and commands — see
+"Non-reference stacks" below. Do not assume the reference stack; read `facts.md` first.
 
 ---
 
@@ -17,7 +22,11 @@ Produces committed, gate-passing code on a worktree branch.
 
 ---
 
-## Cached answers
+## Cached answers (REFERENCE stack — `facts.md` overrides per project)
+
+These are defaults for the reference stack. Any row that contradicts the project's
+`facts.md` loses — `facts.md` wins. On a fresh non-reference repo, treat the whole table as
+"to be replaced by facts.md".
 
 | Question | Answer |
 |---|---|
@@ -33,6 +42,32 @@ Produces committed, gate-passing code on a worktree branch.
 | Prod deploy? | Manual `vercel --prod --yes` — never automated. Not part of the build playbook. |
 
 ---
+
+## Non-reference stacks (the skeleton is stack-neutral)
+
+When `facts.md` says the project is NOT the reference stack, keep the build skeleton and swap
+the specifics:
+
+- **Gates.** The principle is unchanged: a FAST type/compile check per wave in the worktree,
+  and ONE full build/test on the main checkout after merge. The COMMANDS come from `facts.md`
+  (e.g. `vite build`, `tsc -b`, `cargo build`, `pytest`, `go build`). Do not assume
+  `pnpm build` or `tsc --noEmit`.
+- **"Read the framework docs first"** generalizes to *read the project's own conventions and
+  the framework version's docs before writing framework-specific code* — not specifically
+  `node_modules/next/dist/docs`.
+- **The worktree-build hazard generalizes:** any build tool that resolves a project root
+  (turbopack.root, nx/turbo, a monorepo bundler) may resolve OUTSIDE a symlinked worktree
+  `node_modules` and silently build the wrong tree. Verify the gate ran against the worktree,
+  or run the full build on main after merge (the safe default).
+- **No DB / no server-action layer?** Skip those rows entirely — they are reference-only.
+
+## Audit-first PREPARE (for audit / "make it strong" briefs)
+
+When the brief is an AUDIT ("find everything wrong with X") or asks for a qualitative leap
+("make X strong, not a small bump"), dispatch a READ-ONLY explore pass BEFORE the planner and
+feed its findings into the planner brief. It corrects the framing cheaply — it can flip
+"build this" into "this already exists; the real gap is Y", saving the planner from speccing
+the wrong thing. Cheap and stack-neutral.
 
 ## Known wave shapes
 
@@ -98,6 +133,44 @@ each — and FIRST pin shared conventions (component primitives, shared-file sha
 spec, or isolated lanes diverge (exp 2026-06-08: two lanes independently chose different tile
 implementations and changed a shared file's shape). Parallel commits are the fastest build,
 but the merge + divergence cost is only worth it at real lane scale.
+
+## Right-size EXECUTE: inline ↔ Workflow ↔ inline-parallel hybrid (smart, not rigid)
+
+The Workflow engine's only benefit is PARALLEL writes; it carries a contamination tax (see
+the hygiene gate below). Pick the lightest execution shape that fits the plan:
+
+- **Inline on the main checkout** — when the plan is strictly serial (1 task/wave) or tiny.
+  Inline SKIPS the reviewer agents, so the coordinator MUST self-review the full diff AND
+  manually trace the READ path the write feeds before committing (a read-path bug passes
+  type-check + build). Let the PLAN self-declare the inline path for serial-but-wave-shaped
+  plans.
+- **Workflow (worktree)** — the default for a genuinely parallel, multi-wave plan.
+- **Inline-parallel HYBRID** — when ANOTHER process writes into the same checkout (a foreign
+  session, a background worker) so the hygiene gate can't tell stray writes from foreign WIP,
+  but the plan is genuinely wide: dispatch write-only implementer subagents via the plain
+  Agent tool per wave (disjoint `files_write`, repo-absolute paths, NEVER git, never touch
+  the foreign session's paths) with the COORDINATOR as the serialized committer (one gate per
+  wave, one commit per task). Preserves the write/commit split with zero contamination;
+  implementer learnings still flow.
+
+## Post-EXECUTE hygiene gate (worktree contamination + stale base)
+
+The "all writes land in the worktree" guarantee is NOT reliable in practice — Workflow
+`agent()` calls can ALSO write into the main checkout, leaving a divergent unreviewed variant
+that blocks the merge. BEFORE merging, the coordinator MUST:
+
+1. Confirm stray agent processes have EXITED (a survivor keeps rewriting main between
+   commands — re-check after a few seconds).
+2. `git status` the main checkout; `git checkout HEAD -- <tracked strays>` and `rm <untracked
+   orphans>`, preserving any unrelated in-progress work.
+3. Re-run the type-check on main and confirm it is clean AND STABLE over a ~5s window (a green
+   check can be overwritten by a straggler).
+
+**Stale-base guard.** If the worktree was suspended while another session moved/rebased the
+base branch, `git diff base..HEAD` shows main-side commits as FALSE deletions. Do not "fix"
+them: gate every deletion/regression finding on a branch-lineage check (`git log base..HEAD
+--name-only` of the branch's OWN commits), hard-scope any fixer to the plan's `files_write`,
+and integrate a moved base by COPYING in-scope files + diff-review, never a blind merge.
 
 ---
 

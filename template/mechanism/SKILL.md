@@ -5,8 +5,9 @@ description: >
   <workflow> is one of: idea | prototype | build | fix | refactor | release | harvest.
   If <workflow> is omitted, the CHEAP CLASSIFICATION router (defined in this file)
   picks one from the brief and logs its choice for retro correction.
-  Runs 5 fixed phases: LOAD → PREPARE → EXECUTE → RETRO → REPORT.
-  A mandatory retro (kaizen-sensei) runs after every cycle, even on failure.
+  Runs 5 phases: LOAD → PREPARE → EXECUTE → RETRO → REPORT, each right-sized to the task.
+  A retro runs after every cycle: it ALWAYS assesses, and does the full self-editing pass
+  only when the cycle earned a real enhancement (failures and recurrences always do).
 ---
 
 # Kaizen — Entry Skill
@@ -21,6 +22,26 @@ run) and never touches `turbo` or the plugin's own files.
 
 ---
 
+## Smart, not rigid — the governing principle
+
+Kaizen optimizes for **value per cycle**, not process compliance. Every stage earns its
+cost. **Right-size the process to the task:** a one-line fix needs no planner dispatch, no
+plan review, and no heavy retro; a routine, already-known change needs no self-edit at all.
+Do a step because it adds value on THIS cycle — not because the pipeline lists it.
+
+Two non-negotiables remain (the rigidity that earns its keep):
+
+1. **Never ship unverified work** — gates + verification before any commit/claim.
+2. **Always record the run, and always learn from failures** — one telemetry line per
+   cycle, and a full retro whenever a cycle fails, surprises, or repeats a known mistake.
+
+Everything else scales to the task. This principle governs all phases below: PREPARE may
+skip the planner on a confirmed-trivial change, EXECUTE scales from inline to a full
+Workflow, and RETRO is **value-triggered** (Phase 4), not a mechanical after-every-cycle
+ritual. Be smart, not rigid.
+
+---
+
 ## CHEAP CLASSIFICATION router
 
 **This logic runs inside this SKILL.md — NOT an agent.** When `<workflow>` is
@@ -32,13 +53,20 @@ can correct misroutes in the retro.
 
 | Condition in brief | Pick |
 |---|---|
+| Brief IS or NAMES another skill/command (e.g. `/<skill> for #24`) | CLARIFY → classify the real underlying work (NEVER run that other skill) |
 | Contains words: "harvest", "learn from", "what's new in", "pull learnings", "sync from" (or "upstream" only when paired with "harvest", "learn", or "sync") | `harvest` |
 | Contains words: "release", "tag", "changelog", "version", "ship it", "cut a release" | `release` |
 | Contains words: "bug", "broken", "error", "fail", "crash", "500", "not working", "fix", "regression" | `fix` |
 | Contains words: "refactor", "cleanup", "extract", "rename", "move", "restructure", "simplify" without new features | `refactor` |
+| References an already-APPROVED design doc / written spec for a real component (e.g. "implement the approved X", a path under `docs/superpowers/specs/`) | `build` (an approved design is real work — beats the `prototype`/`idea` keywords below) |
 | Contains words: "prototype", "mockup", "mock-up", "wireframe", "POC", "proof of concept", "fake data", "demo UI" | `prototype` |
 | Contains words: "idea", "brainstorm", "explore", "spec only", "design", "what if", "proposal" | `idea` |
 | Default (none of the above match, or "add", "build", "implement", "feature", "new") | `build` |
+
+When the brief NAMES another skill, kaizen never runs that skill — it asks what the
+underlying work is, then classifies that. When a design/spec is already approved, route to
+`build` even if the brief says "design" or "mockup": the throwaway-HTML `prototype` and the
+spec-only `idea` are for work that ISN'T decided yet.
 
 ### Logging the classification choice
 
@@ -71,11 +99,13 @@ lean default cheap while making heavier capabilities **opt-in**.
 | `EXECUTE` | EXECUTE | core | waves of implementers → committer → adversarial code review |
 | `SECURITY` | inside EXECUTE review | opt-in | CSO lens (OWASP/STRIDE/secrets/SKILL.md) on the diff |
 | `DEPLOY` | end of EXECUTE | opt-in | run the project's production deploy command after gates are green |
-| `RETRO` | RETRO | **mandatory** | sensei — never removable |
+| `RETRO` | RETRO | **always assess** | sensei — always assesses; full self-edit only on signal (failures always); never removable |
 | `REPORT` | REPORT | always | print outcome + telemetry |
 
-`LOAD`, `RETRO`, `REPORT` are non-removable. `RETRO` is an INVARIANT (mandatory after
-every run, even failure).
+`LOAD`, `RETRO`, `REPORT` are non-removable. The RETRO **assessment** is an INVARIANT — it
+runs after every cycle, even failure, because it is cheap and keeps run history honest. The
+**full self-editing retro** is value-triggered: it fires only when the cycle earned an
+enhancement (see Phase 4). Failures and recurrences ALWAYS trigger a full retro.
 
 ### Workflow presets (the split)
 
@@ -122,10 +152,12 @@ This lets the grammar ship before every stage is built.
 
 ---
 
-## 5 Fixed Phases
+## 5 Phases (right-sized to the task)
 
-Every kaizen run — regardless of workflow — follows these five phases in order.
-Skipping a phase (including RETRO) is not allowed.
+Every kaizen run follows these five phases in order, but each phase's **depth scales to the
+task** (see "Smart, not rigid"). The phases are always present; how much they do is not:
+a confirmed-trivial change skips the planner dispatch, a clean routine cycle gets a light
+retro. The RETRO **assessment** and the final REPORT always run.
 
 ### Phase 1 — LOAD
 
@@ -176,22 +208,40 @@ The cloned turbo engine runs the plan:
 See `.claude/kaizen/engine/workflow-script.md` for the canonical script and
 all safety invariants.
 
-### Phase 4 — RETRO
+### Phase 4 — RETRO (value-triggered, smart)
 
-**MANDATORY — runs even on failure.**
+Retro exists to **raise a real enhancement**, not to comply with a process. It runs in two
+speeds. The cheap ASSESS pass is always done; the expensive CODIFY pass fires only on signal.
 
-`kaizen-sensei` (opus) receives the run report (including every agent's `learnings`
-array, the assumption log, timing, and token counts) and:
+**Step A — ASSESS (always, cheap).** After every cycle, `kaizen-sensei` (opus) reads the run
+report (every agent's `learnings`, the assumption log, timing, token counts, status) and
+answers ONE question: *did this cycle earn an enhancement?* It ALWAYS appends one telemetry
+line (run history + the trend/fix-ratio alarms depend on it) and records the verdict
+(`retro_mode: full | light`).
 
-- Always updates memory (at least one memory file is updated every retro).
-- May edit playbooks, agent prompts, or engine heuristics within the A6 rules
-  (max 5 file edits per retro; every edit cites run evidence; prompts shrink or
-  stay equal unless evidence justifies growth; NEVER touches INVARIANT sections).
-- Appends exactly one line to `.claude/kaizen/telemetry.jsonl`.
-- Appends one entry to `.claude/kaizen/CHANGELOG.md`.
-- Makes exactly ONE commit: `kaizen(retro): <summary>`.
+**Step B — CODIFY (full retro) — only when ASSESS finds signal.** Dispatch the full
+self-editing retro when ANY of these hold:
 
-If the run failed before EXECUTE, sensei still runs using the partial run report.
+- the run **failed or was blocked**;
+- a **new** pattern, hazard, or convention emerged (not already in memory);
+- a **known issue recurred** (escalate it — repeats are the strongest signal);
+- the router **misrouted**, or an `[ASSUMPTION]` was **refuted**;
+- there was **friction** worth a mechanism tweak, or **the user gave feedback** mid-run;
+- a memory file is **over its line cap** (compaction is required).
+
+When the full retro fires, sensei updates memory and may edit playbooks, agent prompts, or
+engine heuristics within the A6 rules (see below), appends one CHANGELOG entry, and makes
+**one** commit `kaizen(retro): <summary>`.
+
+**Light retro — when NONE of the signals fire** (routine cycle, clean repeat of a known
+shape): record the telemetry line + `retro_mode: light`, note "no new learning (routine)",
+and **stop — no forced memory edit, no commit.** An honest "nothing to add" beats a
+manufactured learning to satisfy a quota. REPORT states whether the retro was full or light
+and why, so the user can override ("do a full retro on this one").
+
+**Floor (non-negotiable):** failures, blocks, and recurrences ALWAYS get a full retro — a
+failed run is the richest learning there is. If the run failed before EXECUTE, sensei still
+runs a full retro from the partial run report.
 
 ### Phase 5 — REPORT
 
@@ -358,13 +408,19 @@ Additional telemetry and changelog files:
 
 ---
 
-## Mandatory retro rules (A6 — encoded here for fast reference)
+## Retro rules (A6 — encoded here for fast reference)
+
+These bind the FULL retro (Phase 4, Step B). A **light** retro makes no self-edits and no
+commit — it only appends the telemetry line.
 
 1. Max 5 file edits per retro (telemetry + CHANGELOG appends do NOT count).
 2. Every edit must cite run evidence (`run_id`, specific finding, token count).
-3. Prompts must shrink or stay equal unless evidence justifies growth.
-4. NEVER edit any section headed "INVARIANT — sensei must never edit".
-5. Exactly ONE commit per retro: `kaizen(retro): <summary>`.
+3. **Never invent a learning to comply.** Update memory or mechanism ONLY when the cycle
+   earned it. A retro that changes nothing is a valid outcome — record why and stop.
+4. Prompts must shrink or stay equal unless evidence justifies growth.
+5. NEVER edit any section headed "INVARIANT — sensei must never edit".
+6. **At most ONE commit per retro** (`kaizen(retro): <summary>`); a light retro makes none.
+7. The telemetry line is ALWAYS appended (full or light) — run history must stay complete.
 
 ---
 

@@ -32,6 +32,14 @@ Follow the standard superpowers spec format. The playbook skeleton's pre-filled 
 become the spec body. The assumption log becomes the spec's "Assumptions" section. Any open
 disagreements become the spec's "Open questions" section.
 
+**Evidence-first + scope-lock (do this before writing any `[ASSUMPTION]` or dispatching the
+interviewer):** read at least one concrete file/symbol in the affected area and CITE it
+(`path:line`) in the spec. A spec built on zero reads is a guess — a bare count or an
+unverified "X already works" becomes wrong shipped code. Every spec MUST state, explicitly:
+its **out of scope** list, the **systems/files touched**, the **smallest MVP** that satisfies
+the brief, and a one-line **rollback** (how to undo). The `files_write` union across the plan
+IS the scope lock — anything outside it is drift the reviewer will reject.
+
 ## Plan rules
 
 - The plan MUST conform to the format in `.claude/kaizen/engine/plan-format.md`
@@ -59,6 +67,11 @@ After writing the plan, run a self-check:
    in your plan. Each match must be replaced with concrete content or be inside an example
    block that explicitly illustrates a placeholder.
 4. **Wave-width cap:** no wave has more than 4 tasks.
+5. **Executability score (0–10).** Self-grade: *"could an unfamiliar implementer execute
+   this plan without guessing?"* Score each task's clarity (concrete files, clear
+   acceptance, no vague verbs) and the spec's completeness. If the score is **<7, revise
+   once**; if it is still <7, ship it but add `> spec_score: <n> — <the weakest gap>` at the
+   top of the plan and record the gap in `learnings`. Return the final score as `spec_score`.
 
 If self-validation cannot be made to pass within one rewrite, write
 `> DAG validation failed: <reason>` at the top of the plan and fall back to single-wave
@@ -74,6 +87,7 @@ Return structured data. The engine reads `waves` directly into the iteration Wor
   waves: number,
   tasks: number,
   assumptions: string[],
+  spec_score: number,
   learnings?: string[] }
 ```
 

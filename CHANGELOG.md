@@ -8,6 +8,64 @@ Newest version first.
 
 ---
 
+## [0.9.0] — 2026-06-12 · smart retro + learnings harvested from real project runs
+
+Kaizen stops doing the retro as a per-cycle ritual and starts doing it as a value-trigger,
+and absorbs the hard-won safety + review + planning learnings that three downstream projects
+(the OneStudio hub, AVO, xspace) evolved locally over ~50 real `/kaizen` runs. No breaking
+changes — existing cycles keep working, they just get smarter. Up-ported by hand (the
+plugin's "sync evolved files back upstream is out of scope" gap, now closed for this round).
+
+### Added — Smart Retro (the headline; deliberate INVARIANT change)
+- **Retro is now value-triggered, not mandatory-every-cycle.** It runs in two speeds: a cheap
+  ASSESS pass after every cycle (always appends one telemetry line), and the full
+  self-editing CODIFY pass ONLY when the cycle earned an enhancement — a failure/block, a new
+  pattern, a recurring mistake, a misroute, a refuted assumption, friction, or user feedback.
+  A routine cycle gets a **light retro**: telemetry line only, no forced memory edit, no
+  commit. "Nothing new this cycle" is now a valid, honest outcome instead of a manufactured
+  learning. Failures and recurrences ALWAYS get a full retro (the one floor that stays).
+  Touches `SKILL.md` (Phase 4, stage table, A6 rules), `agents/kaizen-sensei.md` (ASSESS step
+  + full/light gating on Steps 4/6/7/8), and the telemetry schema (`retro_mode`).
+- **"Smart, not rigid" governing principle** in `SKILL.md`: every stage earns its cost;
+  right-size the process to the task. Two non-negotiables remain — never ship unverified
+  work, and always record the run + learn from failures.
+
+### Added — review / planning / retro quality
+- **Reviewer semantic dedup** — the engine now dedups findings by `file::line` (keeping the
+  higher severity), not `file::title`, so three lenses can't file the same line under three
+  titles and burn three verify agents. The reviewer also self-clusters by "would one edit fix
+  both?". (`engine/workflow-script.md`, `agents/kaizen-reviewer.md`)
+- **Delivery audit** — the `scope` reviewer now audits the diff against the spec's
+  deliverables (`done`/`partial`/`not_done`/`changed`/`unverifiable` + scope-drift), returned
+  as `delivery_audit` with a `complete`/`gaps`/`drift` verdict. Work isn't done until gaps
+  close. (`REVIEW_FINDINGS` schema + reviewer)
+- **Planner evidence-first scope-lock + executability `spec_score`** — the planner must read
+  and cite at least one real file before writing assumptions, must state out-of-scope / MVP /
+  rollback, and self-grades a 0–10 executability score (revise once if <7).
+  (`agents/kaizen-planner.md`, `PLANNER_RESULT` schema)
+- **Sensei quantitative metrics + fix-ratio alarm** — each retro records `metrics`
+  (commits/files/net-loc/tests-touched) and trend deltas, and warns when >50% of recent runs
+  are `fix` (a "ship-fast-fix-fast" quality gap). (`agents/kaizen-sensei.md`, telemetry seed)
+
+### Added — router + execution safety
+- **Router rules:** a brief that NAMES another skill → clarify and classify the real work
+  (never run that skill); an already-APPROVED design/spec → route to `build`, not
+  `prototype`/`idea`. (`SKILL.md`)
+- **Stack-decouple of `build.md`** — the reference stack (Next/pnpm/Neon/Vercel) is now
+  clearly "facts.md overrides this"; a "Non-reference stacks" section keeps the skeleton
+  stack-neutral for Vite/Python/Rust/mobile/research projects (surfaced by AVO, the first
+  non-web kaizen).
+- **Execution-safety guards in `build.md`/`fix.md`:** the inline ↔ Workflow ↔ inline-parallel
+  hybrid decision (inline skips review → self-review the read path); the post-EXECUTE
+  main-hygiene gate (Workflow agents can contaminate the main checkout); the stale-base
+  false-drift guard (a moved base shows main-side commits as false deletions); and the
+  generalized inline-fix trigger (cause ambiguity, not file count).
+
+### Notes
+- Telemetry schema gained `retro_mode` and a `metrics` block (additive; old lines stay valid).
+- Deferred for a follow-up: an engine defect AVO surfaced where runs can arrive as prose
+  instead of the structured result schema, zeroing `phase_tokens`/`learnings[]`.
+
 ## [0.8.1] — 2026-06-09 · harvest hardening + idempotency
 
 Follow-up fixes on the `harvest` workflow shipped in 0.8.0. No new feature — this

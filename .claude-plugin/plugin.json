@@ -1,7 +1,7 @@
 {
   "name": "shipgate",
-  "version": "0.8.1",
-  "description": "Two autonomous, parallel, worktree-isolated work cycles for Claude Code: /turbo (generic, stateless) and /kaizen (self-improving — playbooks, per-agent memory, mandatory self-editing retro; scaffolds an editable copy into the project on first run).",
+  "version": "0.9.0",
+  "description": "Two autonomous, parallel, worktree-isolated work cycles for Claude Code: /turbo (generic, stateless) and /kaizen (self-improving — playbooks, per-agent memory, value-triggered self-editing retro; scaffolds an editable copy into the project on first run).",
   "author": {
     "name": "OneStudio"
   }

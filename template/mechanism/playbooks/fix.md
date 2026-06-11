@@ -132,15 +132,18 @@ Evidence: run c3-fixer-queue (coordinator had to recall this from memory).
 
 ## Inline vs worktree (when to skip the worktree)
 
-- **Single-file fix + confirmed cause + gates run before commit → inline on the
-  MAIN checkout is allowed** (no worktree). This is wave 0 of "Simple bug".
-  Evidence: c3-fixer-queue #22 fixed `lib/goals/schedule.ts` inline, gates green,
-  commit 93940d1.
-- **Multi-file fix OR unclear cause → use a worktree** and the normal wave flow.
-- **Coordinator may author the fix-spec itself** when triage already collapsed
-  the cause to ONE confirmed root cause in a single file — the planner dispatch
-  is reserved for multi-file or still-ambiguous causes. Evidence: c3 #22 cause
-  was evidence-confirmed during triage, so the planner was skipped.
+The worktree trigger is **cause AMBIGUITY, not file count.**
+
+- **Confirmed single root cause + disjoint, mechanical edits → inline on the MAIN checkout is
+  allowed** (no worktree), even across SEVERAL files, as long as the gates run before commit.
+  The real risk in skipping the worktree is an unclear or multi-root cause — not the number
+  of files a single confirmed cause happens to touch.
+- **Unclear or multi-root cause → use a worktree** and the normal wave flow.
+- **Coordinator may author the fix-spec itself** when triage already collapsed the cause to
+  ONE confirmed root cause — the planner dispatch is reserved for ambiguous or genuinely
+  multi-cause fixes.
+- **Inline skips the reviewer agents** — so self-review the full diff AND trace the READ path
+  the fix feeds before committing (a read-path bug passes the gates).
 
 ## Evidence-first protocol (the five steps)
 

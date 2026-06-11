@@ -3,9 +3,10 @@ name: kaizen
 description: >
   Self-improving build/fix/release cycle, invoked as `/kaizen <workflow> <brief>`
   (<workflow> = idea | prototype | build | fix | refactor | release; omit it and a
-  cheap router picks one). Runs LOAD → PREPARE → EXECUTE → RETRO → REPORT with a
-  mandatory self-editing retro. On first use it SCAFFOLDS its editable mechanism into
-  the project's `.claude/` and then runs project-local, so it keeps evolving per repo.
+  cheap router picks one). Runs LOAD → PREPARE → EXECUTE → RETRO → REPORT, each right-sized
+  to the task, with a value-triggered self-editing retro (smart, not rigid). On first use it
+  SCAFFOLDS its editable mechanism into the project's `.claude/` and then runs project-local,
+  so it keeps evolving per repo.
 ---
 
 # Kaizen — plugin entry (scaffolder shim)
